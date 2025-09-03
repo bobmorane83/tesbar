@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "led_count": 120,
+  "animations": [
+    {
+      "name": "Barre Mobile",
+      "type": "moving_bar",
+      "parameters": {
+        "width": 20,
+        "speed": 10,
+        "color": [
+          245,
+          33,
+          0
+        ],
+        "bidirectional": true
+      }
+    }
+  ]
+}
