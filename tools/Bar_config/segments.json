@@ -1,0 +1,62 @@
+{
+    "num_leds": 16,
+    "segments": [
+        {
+            "start": 0,
+            "end": 4,
+            "color": "#ff0000",
+            "mode": "static",
+            "signal_info": {
+                "message": "EPAS_sysStatus",
+                "signal": "EPAS_eacStatus",
+                "active_value": "EAC_AVAILABLE",
+                "inactive_value": "EAC_ACTIVE",
+                "id": 880,
+                "start": 55,
+                "length": 3,
+                "byte_order": "big_endian",
+                "is_signed": false,
+                "scale": 1,
+                "offset": 0,
+                "minimum": 5,
+                "maximum": 7,
+                "unit": null,
+                "choices": {
+                    "2": "EAC_ACTIVE",
+                    "1": "EAC_AVAILABLE",
+                    "3": "EAC_FAULT",
+                    "0": "EAC_INHIBITED",
+                    "4": "SNA"
+                },
+                "comment": null
+            }
+        },
+        {
+            "start": 5,
+            "end": 9,
+            "color": "#00ff4c",
+            "mode": "blinking",
+            "signal_info": {
+                "message": "EPAS_sysStatus",
+                "signal": "EPAS_steeringReduced",
+                "active_value": "NORMAL_ASSIST",
+                "inactive_value": "REDUCED_ASSIST",
+                "id": 880,
+                "start": 3,
+                "length": 1,
+                "byte_order": "big_endian",
+                "is_signed": false,
+                "scale": 1,
+                "offset": 0,
+                "minimum": -1,
+                "maximum": 2,
+                "unit": null,
+                "choices": {
+                    "0": "NORMAL_ASSIST",
+                    "1": "REDUCED_ASSIST"
+                },
+                "comment": null
+            }
+        }
+    ]
+}
