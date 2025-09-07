@@ -37,7 +37,7 @@ class LEDBar(QWidget):
         # Draw only the selected segment
         if self.selected_segment is not None and self.selected_segment < len(self.segments):
             seg = self.segments[self.selected_segment]
-            start, end, color, mode, signal_info = seg
+            start, end, color, mode, signal_info, speed, reverse = seg
             start_x = start * led_width
             end_x = (end + 1) * led_width
             rect = QRectF(start_x, 0, end_x - start_x, self.height())
@@ -77,7 +77,7 @@ class LEDBar(QWidget):
             if self.start_index > self.end_index:
                 self.start_index, self.end_index = self.end_index, self.start_index
             # Create segment with defaults
-            self.segments.append((self.start_index, self.end_index, QColor('red'), 'static', {}))
+            self.segments.append((self.start_index, self.end_index, QColor('red'), 'static', {}, 1000, False))
             self.selected_segment = len(self.segments) - 1
             self.show_config()
             self.start_index = None
@@ -86,14 +86,14 @@ class LEDBar(QWidget):
     def show_config(self):
         if self.selected_segment is not None:
             seg = self.segments[self.selected_segment]
-            dialog = SegmentConfigDialog(seg[2], seg[3], seg[4], self.is_editing)
+            dialog = SegmentConfigDialog(seg[2], seg[3], seg[4], seg[5], seg[6], self.is_editing)
             if dialog.exec():
-                color, mode, code = dialog.get_values()
+                color, mode, code, speed, reverse = dialog.get_values()
                 if dialog.delete_requested:
                     self.segments.pop(self.selected_segment)
                     self.selected_segment = None
                 else:
-                    self.segments[self.selected_segment] = (seg[0], seg[1], color, mode, code)
+                    self.segments[self.selected_segment] = (seg[0], seg[1], color, mode, code, speed, reverse)
                 self.update_colors()
                 # Hide after config only for new segments
                 if not self.is_editing:
@@ -112,7 +112,7 @@ class LEDBar(QWidget):
         self.led_colors = [QColor('gray')] * self.num_leds
         if self.selected_segment is not None and self.selected_segment < len(self.segments):
             seg = self.segments[self.selected_segment]
-            start, end, color, mode, signal_info = seg
+            start, end, color, mode, signal_info, speed, reverse = seg
             for i in range(start, end + 1):
                 self.led_colors[i] = color
         self.update()
@@ -208,12 +208,24 @@ class MiniLEDPreview(QWidget):
     def set_speed(self, speed: int):
         """Modifie la vitesse de l'effet"""
         if self.ws2812fx.segments:
-            self.ws2812fx.segments[0].speed = speed
+            segment = self.ws2812fx.segments[0]
+            segment.speed = speed
+            # Reset counters to ensure smooth transition
+            segment.counter_mode_call = 0
+            segment.counter_mode_step = 0
+            segment.last_update_time = 0  # Reset timing
+            self.update()  # Force visual update
 
     def set_reverse(self, reverse: bool):
         """Modifie le sens de l'effet"""
         if self.ws2812fx.segments:
-            self.ws2812fx.segments[0].reverse = reverse
+            segment = self.ws2812fx.segments[0]
+            segment.reverse = reverse
+            # Reset counters to ensure smooth transition
+            segment.counter_mode_call = 0
+            segment.counter_mode_step = 0
+            segment.last_update_time = 0  # Reset timing
+            self.update()  # Force visual update
 
     def set_color(self, color: QColor):
         """Modifie la couleur de l'effet"""
@@ -248,7 +260,7 @@ class MiniLEDPreview(QWidget):
 
 
 class SegmentConfigDialog(QDialog):
-    def __init__(self, color, mode, signal_info, is_editing=False):
+    def __init__(self, color, mode, signal_info, speed=1000, reverse=False, is_editing=False):
         super().__init__()
         self.setWindowTitle("Configurer le Segment")
         layout = QVBoxLayout()
@@ -321,57 +333,7 @@ class SegmentConfigDialog(QDialog):
             'HALLOWEEN',
             'BICOLOR_CHASE',
             'TRICOLOR_CHASE',
-            'ICU',
-            'CUSTOM_0',
-            'CUSTOM_1',
-            'CUSTOM_2',
-            'CUSTOM_3',
-            'CUSTOM_4',
-            'CUSTOM_5',
-            'CUSTOM_6',
-            'CUSTOM_7',
-            'CUSTOM_8',
-            'CUSTOM_9',
-            'CUSTOM_10',
-            'CUSTOM_11',
-            'CUSTOM_12',
-            'CUSTOM_13',
-            'CUSTOM_14',
-            'CUSTOM_15',
-            'CUSTOM_16',
-            'CUSTOM_17',
-            'CUSTOM_18',
-            'CUSTOM_19',
-            'CUSTOM_20',
-            'CUSTOM_21',
-            'CUSTOM_22',
-            'CUSTOM_23',
-            'CUSTOM_24',
-            'CUSTOM_25',
-            'CUSTOM_26',
-            'CUSTOM_27',
-            'CUSTOM_28',
-            'CUSTOM_29',
-            'CUSTOM_30',
-            'CUSTOM_31',
-            'CUSTOM_32',
-            'CUSTOM_33',
-            'CUSTOM_34',
-            'CUSTOM_35',
-            'CUSTOM_36',
-            'CUSTOM_37',
-            'CUSTOM_38',
-            'CUSTOM_39',
-            'CUSTOM_40',
-            'CUSTOM_41',
-            'CUSTOM_42',
-            'CUSTOM_43',
-            'CUSTOM_44',
-            'CUSTOM_45',
-            'CUSTOM_46',
-            'CUSTOM_47',
-            'CUSTOM_48',
-            'CUSTOM_49'
+            'ICU'
         ])
         self.mode_combo.setCurrentText(mode)
         self.mode_combo.currentTextChanged.connect(self.on_mode_changed)
@@ -380,11 +342,13 @@ class SegmentConfigDialog(QDialog):
         self.speed_label = QLabel("Vitesse:")
         self.speed_slider = QSlider(Qt.Horizontal)
         self.speed_slider.setRange(1, 1000)
-        self.speed_slider.setValue(1000)
+        self.speed_slider.setValue(speed)
         self.speed_slider.valueChanged.connect(self.on_speed_changed)
+        self.speed_slider.sliderReleased.connect(self.on_speed_slider_released)
 
         # Reverse checkbox
         self.reverse_checkbox = QCheckBox("Inverser")
+        self.reverse_checkbox.setChecked(reverse)
         self.reverse_checkbox.stateChanged.connect(self.on_reverse_changed)
 
         # Message combo
@@ -472,8 +436,15 @@ class SegmentConfigDialog(QDialog):
         self.mini_preview.set_mode_from_string(mode, self.color, self.speed_slider.value(), self.reverse_checkbox.isChecked())
 
     def on_speed_changed(self, speed):
-        # Update preview speed
+        # Update preview speed (light update during slider movement)
         self.mini_preview.set_speed(speed)
+
+    def on_speed_slider_released(self):
+        # Full update when slider is released
+        speed = self.speed_slider.value()
+        self.mini_preview.set_speed(speed)
+        # Force a complete refresh
+        self.mini_preview.update()
 
     def on_reverse_changed(self, state):
         # Update preview reverse setting
@@ -558,7 +529,7 @@ class SegmentConfigDialog(QDialog):
                     'choices': choices_dict,
                     'comment': signal_data['comment']
                 }
-        return self.color, self.mode_combo.currentText(), signal_info
+        return self.color, self.mode_combo.currentText(), signal_info, self.speed_slider.value(), self.reverse_checkbox.isChecked()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -594,13 +565,143 @@ class MainWindow(QMainWindow):
         left_widget.setLayout(left_layout)
         splitter.addWidget(left_widget)
         
-        # Right widget
+        # Right widget - Configuration Panel
         right_widget = QWidget()
         right_layout = QVBoxLayout()
-        right_layout.addWidget(QLabel("Codes"))
-        self.codes_list = QListWidget()
-        self.codes_list.itemClicked.connect(self.on_code_selected)
-        right_layout.addWidget(self.codes_list)
+        right_layout.addWidget(QLabel("Configuration du Segment"))
+        
+        # Mini LED Preview (moved to top)
+        preview_layout = QVBoxLayout()
+        preview_layout.addWidget(QLabel("Aperçu:"))
+        self.mini_preview_config = MiniLEDPreview(50)  # Smaller preview for config panel
+        self.mini_preview_config.setFixedHeight(40)
+        preview_layout.addWidget(self.mini_preview_config)
+        right_layout.addLayout(preview_layout)
+        
+        # Segment name input
+        name_layout = QHBoxLayout()
+        name_layout.addWidget(QLabel("Nom:"))
+        self.segment_name_edit = QLineEdit()
+        self.segment_name_edit.setPlaceholderText("Nom du segment")
+        self.segment_name_edit.textChanged.connect(self.on_segment_name_changed)
+        self.segment_name_edit.setEnabled(False)
+        name_layout.addWidget(self.segment_name_edit)
+        right_layout.addLayout(name_layout)
+        
+        # Color selection
+        color_layout = QHBoxLayout()
+        color_layout.addWidget(QLabel("Couleur:"))
+        self.color_btn = QPushButton()
+        self.color_btn.setFixedSize(50, 30)
+        self.color_btn.clicked.connect(self.on_color_changed)
+        self.color_btn.setEnabled(False)
+        color_layout.addWidget(self.color_btn)
+        color_layout.addStretch()
+        right_layout.addLayout(color_layout)
+        
+        # Mode selection
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Mode:"))
+        self.mode_combo_config = QComboBox()
+        self.mode_combo_config.addItems([
+            'STATIC', 'BLINK', 'BREATH', 'COLOR_WIPE', 'COLOR_WIPE_INV', 'COLOR_WIPE_REV',
+            'COLOR_WIPE_REV_INV', 'COLOR_WIPE_RANDOM', 'RANDOM_COLOR', 'SINGLE_DYNAMIC',
+            'MULTI_DYNAMIC', 'RAINBOW', 'RAINBOW_CYCLE', 'SCAN', 'DUAL_SCAN', 'FADE',
+            'THEATER_CHASE', 'THEATER_CHASE_RAINBOW', 'RUNNING_LIGHTS', 'TWINKLE',
+            'TWINKLE_RANDOM', 'TWINKLE_FADE', 'TWINKLE_FADE_RANDOM', 'SPARKLE',
+            'FLASH_SPARKLE', 'HYPER_SPARKLE', 'STROBE', 'STROBE_RAINBOW', 'MULTI_STROBE',
+            'BLINK_RAINBOW', 'CHASE_WHITE', 'CHASE_COLOR', 'CHASE_RANDOM', 'CHASE_RAINBOW',
+            'CHASE_FLASH', 'CHASE_FLASH_RANDOM', 'CHASE_RAINBOW_WHITE', 'CHASE_BLACKOUT',
+            'CHASE_BLACKOUT_RAINBOW', 'COLOR_SWEEP_RANDOM', 'RUNNING_COLOR', 'RUNNING_RED_BLUE',
+            'RUNNING_RANDOM', 'LARSON_SCANNER', 'COMET', 'FIREWORKS', 'FIREWORKS_RANDOM',
+            'FIRE_FLICKER', 'FIRE_FLICKER_SOFT', 'FIRE_FLICKER_INTENSE', 'CIRCUS_COMBUSTUS',
+            'HALLOWEEN', 'BICOLOR_CHASE', 'TRICOLOR_CHASE', 'ICU'
+        ])
+        self.mode_combo_config.currentTextChanged.connect(self.on_mode_config_changed)
+        self.mode_combo_config.setEnabled(False)
+        mode_layout.addWidget(self.mode_combo_config)
+        right_layout.addLayout(mode_layout)
+        
+        # Speed control
+        speed_layout = QHBoxLayout()
+        speed_layout.addWidget(QLabel("Vitesse:"))
+        self.speed_slider_config = QSlider(Qt.Horizontal)
+        self.speed_slider_config.setRange(1, 1000)
+        self.speed_slider_config.setValue(1000)
+        self.speed_slider_config.valueChanged.connect(self.on_speed_config_changed)
+        self.speed_slider_config.sliderReleased.connect(self.on_speed_config_released)
+        self.speed_slider_config.setEnabled(False)
+        speed_layout.addWidget(self.speed_slider_config)
+        self.speed_label_config = QLabel("1000")
+        self.speed_label_config.setFixedWidth(50)
+        speed_layout.addWidget(self.speed_label_config)
+        right_layout.addLayout(speed_layout)
+        
+        # Reverse checkbox
+        self.reverse_checkbox_config = QCheckBox("Inverser")
+        self.reverse_checkbox_config.stateChanged.connect(self.on_reverse_config_changed)
+        self.reverse_checkbox_config.setEnabled(False)
+        right_layout.addWidget(self.reverse_checkbox_config)
+        
+        # CAN Configuration section
+        can_group = QGroupBox("Configuration CAN")
+        can_layout = QVBoxLayout()
+        
+        # Message combo
+        message_layout = QHBoxLayout()
+        message_layout.addWidget(QLabel("Message:"))
+        self.message_combo_config = QComboBox()
+        self.message_combo_config.currentTextChanged.connect(self.on_message_config_changed)
+        self.message_combo_config.setEnabled(False)
+        message_layout.addWidget(self.message_combo_config)
+        can_layout.addLayout(message_layout)
+        
+        # Signal combo
+        signal_layout = QHBoxLayout()
+        signal_layout.addWidget(QLabel("Signal:"))
+        self.signal_combo_config = QComboBox()
+        self.signal_combo_config.currentTextChanged.connect(self.on_signal_config_changed)
+        self.signal_combo_config.setEnabled(False)
+        signal_layout.addWidget(self.signal_combo_config)
+        can_layout.addLayout(signal_layout)
+        
+        # Active value combo
+        active_layout = QHBoxLayout()
+        active_layout.addWidget(QLabel("Valeur Active:"))
+        self.active_value_combo_config = QComboBox()
+        self.active_value_combo_config.currentTextChanged.connect(self.on_active_value_config_changed)
+        self.active_value_combo_config.setEnabled(False)
+        active_layout.addWidget(self.active_value_combo_config)
+        can_layout.addLayout(active_layout)
+        
+        # Inactive value combo
+        inactive_layout = QHBoxLayout()
+        inactive_layout.addWidget(QLabel("Valeur Inactive:"))
+        self.inactive_value_combo_config = QComboBox()
+        self.inactive_value_combo_config.currentTextChanged.connect(self.on_inactive_value_config_changed)
+        self.inactive_value_combo_config.setEnabled(False)
+        inactive_layout.addWidget(self.inactive_value_combo_config)
+        can_layout.addLayout(inactive_layout)
+        
+        can_group.setLayout(can_layout)
+        right_layout.addWidget(can_group)
+        buttons_layout = QHBoxLayout()
+        self.apply_btn = QPushButton("Appliquer")
+        self.apply_btn.clicked.connect(self.on_apply_config)
+        self.apply_btn.setEnabled(False)
+        buttons_layout.addWidget(self.apply_btn)
+        
+        self.delete_btn = QPushButton("Supprimer")
+        self.delete_btn.clicked.connect(self.on_delete_segment)
+        self.delete_btn.setEnabled(False)
+        self.delete_btn.setStyleSheet("QPushButton { color: red; }")
+        buttons_layout.addWidget(self.delete_btn)
+        
+        right_layout.addLayout(buttons_layout)
+        
+        # Add stretch to push everything to the top
+        right_layout.addStretch()
+        
         right_widget.setLayout(right_layout)
         splitter.addWidget(right_widget)
         
@@ -611,6 +712,11 @@ class MainWindow(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.blink)
         self.timer.start(500)
+        
+        # Initialize CAN combos
+        self.dbc_manager = DBCManager()
+        self.message_combo_config.addItems(self.dbc_manager.get_message_names())
+        
         self.update_list()
 
     def load_config(self):
@@ -625,15 +731,17 @@ class MainWindow(QMainWindow):
                 color = QColor(seg_dict['color'])
                 mode = seg_dict['mode']
                 signal_info = seg_dict.get('signal_info', {})
-                segments.append((start, end, color, mode, signal_info))
+                speed = seg_dict.get('speed', 1000)  # Valeur par défaut
+                reverse = seg_dict.get('reverse', False)  # Valeur par défaut
+                segments.append((start, end, color, mode, signal_info, speed, reverse))
             return num_leds, segments
         return 16, []
 
     def save_config(self):
         segments_list = []
         for seg in self.led_bar.segments:
-            start, end, color, mode, signal_info = seg
-            seg_dict = {'start': start, 'end': end, 'color': color.name(), 'mode': mode, 'signal_info': signal_info}
+            start, end, color, mode, signal_info, speed, reverse = seg
+            seg_dict = {'start': start, 'end': end, 'color': color.name(), 'mode': mode, 'signal_info': signal_info, 'speed': speed, 'reverse': reverse}
             segments_list.append(seg_dict)
         data = {'num_leds': self.led_bar.num_leds, 'segments': segments_list}
         with open('segments.json', 'w') as f:
@@ -647,10 +755,12 @@ class MainWindow(QMainWindow):
                 if index != self.led_bar.selected_segment:
                     self.led_bar.selected_segment = index
                     self.led_bar.update_colors()
+                    self.update_segment_config()
         else:
             if self.led_bar.selected_segment is not None:
                 self.led_bar.selected_segment = None
-                self.led_bar.update()
+                self.led_bar.update_colors()
+                self.update_segment_config()
 
     def on_config_btn_clicked(self):
         selected_items = self.segment_list.selectedItems()
@@ -666,7 +776,7 @@ class MainWindow(QMainWindow):
     def on_code_selected(self, item):
         selected_text = item.text()
         for i, seg in enumerate(self.led_bar.segments):
-            start, end, color, mode, signal_info = seg
+            start, end, color, mode, signal_info, speed, reverse = seg
             if signal_info:
                 # Check new active/inactive values
                 if ('active_value' in signal_info and signal_info['active_value'] == selected_text) or \
@@ -691,11 +801,9 @@ class MainWindow(QMainWindow):
 
     def update_list(self):
         self.segment_list.itemSelectionChanged.disconnect(self.on_segment_selected)
-        self.codes_list.itemClicked.disconnect(self.on_code_selected)
         self.segment_list.clear()
-        self.codes_list.clear()
         for i, seg in enumerate(self.led_bar.segments):
-            start, end, color, mode, signal_info = seg
+            start, end, color, mode, signal_info, speed, reverse = seg
 
             if signal_info:
                 # Récupérer les informations CAN
@@ -720,29 +828,21 @@ class MainWindow(QMainWindow):
                 else:
                     values_info = "Aucune valeur"
 
-                # Affichage complet
-                display_text = f"Segment {i+1}: LEDs {start}-{end} | {can_info} | Signal: {signal} | {values_info} | Mode: {mode}"
+                # Get segment name
+                segment_name = signal_info.get('name', f"Segment {i+1}")
+
+                # Affichage simplifié - uniquement le nom
+                display_text = segment_name
             else:
-                display_text = f"Segment {i+1}: LEDs {start}-{end}, Mode: {mode}, Aucun signal"
+                # Get segment name for segments without CAN info
+                segment_name = signal_info.get('name', f"Segment {i+1}") if signal_info else f"Segment {i+1}"
+                # Affichage simplifié - uniquement le nom
+                display_text = segment_name
 
             item = QListWidgetItem(display_text)
             self.segment_list.addItem(item)
 
-            # Add individual values to codes list
-            if signal_info:
-                if 'active_value' in signal_info and signal_info['active_value']:
-                    code_item = QListWidgetItem(f"Actif: {signal_info['active_value']}")
-                    self.codes_list.addItem(code_item)
-                if 'inactive_value' in signal_info and signal_info['inactive_value']:
-                    code_item = QListWidgetItem(f"Inactif: {signal_info['inactive_value']}")
-                    self.codes_list.addItem(code_item)
-                # Legacy support
-                elif 'value' in signal_info and signal_info['value']:
-                    code_item = QListWidgetItem(signal_info['value'])
-                    self.codes_list.addItem(code_item)
-
         self.segment_list.itemSelectionChanged.connect(self.on_segment_selected)
-        self.codes_list.itemClicked.connect(self.on_code_selected)
         current = self.segment_list.currentRow()
         if self.led_bar.selected_segment is not None and self.led_bar.selected_segment < len(self.led_bar.segments) and current != self.led_bar.selected_segment:
             self.segment_list.setCurrentRow(self.led_bar.selected_segment)
@@ -758,6 +858,252 @@ class MainWindow(QMainWindow):
                     else:
                         self.led_bar.led_colors[i] = seg[2]
         self.led_bar.update()
+
+    def update_segment_config(self):
+        """Met à jour l'interface de configuration avec les données du segment sélectionné"""
+        if self.led_bar.selected_segment is not None and self.led_bar.selected_segment < len(self.led_bar.segments):
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, speed, reverse = seg
+            
+            # Update segment name
+            segment_name = signal_info.get('name', '') if signal_info else ''
+            if not segment_name:
+                segment_name = f"Segment {self.led_bar.selected_segment + 1}"
+            self.segment_name_edit.setText(segment_name)
+            self.segment_name_edit.setEnabled(True)
+            
+            # Update color button
+            self.color_btn.setStyleSheet(f"background-color: {color.name()}; border: 1px solid black;")
+            self.color_btn.setEnabled(True)
+            
+            # Update mode
+            self.mode_combo_config.setCurrentText(mode)
+            self.mode_combo_config.setEnabled(True)
+            
+            # Update speed
+            self.speed_slider_config.setValue(speed)
+            self.speed_label_config.setText(str(speed))
+            self.speed_slider_config.setEnabled(True)
+            
+            # Update reverse
+            self.reverse_checkbox_config.setChecked(reverse)
+            self.reverse_checkbox_config.setEnabled(True)
+            
+            # Update preview
+            self.mini_preview_config.set_mode_from_string(mode, color, speed, reverse)
+            
+            # Update CAN configuration
+            if signal_info and 'message' in signal_info:
+                # Temporarily disconnect signals to avoid interference during initialization
+                self.message_combo_config.currentTextChanged.disconnect(self.on_message_config_changed)
+                self.signal_combo_config.currentTextChanged.disconnect(self.on_signal_config_changed)
+                
+                self.message_combo_config.setCurrentText(signal_info['message'])
+                self.on_message_config_changed(signal_info['message'])
+                if 'signal' in signal_info:
+                    self.signal_combo_config.setCurrentText(signal_info['signal'])
+                    self.on_signal_config_changed(signal_info['signal'])
+                    if 'active_value' in signal_info:
+                        self.active_value_combo_config.setCurrentText(signal_info['active_value'])
+                    if 'inactive_value' in signal_info:
+                        self.inactive_value_combo_config.setCurrentText(signal_info['inactive_value'])
+                    # Support legacy 'value' field for backward compatibility
+                    elif 'value' in signal_info:
+                        self.active_value_combo_config.setCurrentText(signal_info['value'])
+                
+                # Reconnect signals
+                self.message_combo_config.currentTextChanged.connect(self.on_message_config_changed)
+                self.signal_combo_config.currentTextChanged.connect(self.on_signal_config_changed)
+                
+                self.message_combo_config.setEnabled(True)
+                self.signal_combo_config.setEnabled(True)
+                self.active_value_combo_config.setEnabled(True)
+                self.inactive_value_combo_config.setEnabled(True)
+            else:
+                self.message_combo_config.setCurrentText("")
+                self.signal_combo_config.clear()
+                self.active_value_combo_config.clear()
+                self.inactive_value_combo_config.clear()
+                self.message_combo_config.setEnabled(True)
+                self.signal_combo_config.setEnabled(False)
+                self.active_value_combo_config.setEnabled(False)
+                self.inactive_value_combo_config.setEnabled(False)
+            
+            # Enable buttons
+            self.apply_btn.setEnabled(True)
+            self.delete_btn.setEnabled(True)
+        else:
+            # No segment selected
+            self.segment_name_edit.clear()
+            self.segment_name_edit.setEnabled(False)
+            self.color_btn.setStyleSheet("")
+            self.color_btn.setEnabled(False)
+            self.mode_combo_config.setEnabled(False)
+            self.speed_slider_config.setEnabled(False)
+            self.reverse_checkbox_config.setEnabled(False)
+            self.message_combo_config.setEnabled(False)
+            self.signal_combo_config.setEnabled(False)
+            self.active_value_combo_config.setEnabled(False)
+            self.inactive_value_combo_config.setEnabled(False)
+            self.apply_btn.setEnabled(False)
+            self.delete_btn.setEnabled(False)
+            
+            # Stop preview when no segment selected
+            self.mini_preview_config.stop_preview()
+
+    def on_segment_name_changed(self, name):
+        if self.led_bar.selected_segment is not None:
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, speed, reverse = seg
+            if signal_info is None:
+                signal_info = {}
+            signal_info['name'] = name
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.update_list()
+
+    def on_color_changed(self):
+        if self.led_bar.selected_segment is not None:
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            current_color = seg[2]
+            
+            color = QColorDialog.getColor(current_color, self, "Choisir la couleur")
+            if color.isValid():
+                self.color_btn.setStyleSheet(f"background-color: {color.name()}; border: 1px solid black;")
+                # Apply immediately
+                start, end, _, mode, signal_info, speed, reverse = seg
+                self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+                self.led_bar.update_colors()
+                self.update_list()
+                # Update preview color
+                self.mini_preview_config.set_color(color)
+
+    def on_mode_config_changed(self, mode):
+        if self.led_bar.selected_segment is not None:
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, _, signal_info, speed, reverse = seg
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.led_bar.update_colors()
+            # Update preview
+            self.mini_preview_config.set_mode_from_string(mode, color, speed, reverse)
+
+    def on_speed_config_changed(self, speed):
+        self.speed_label_config.setText(str(speed))
+
+    def on_speed_config_released(self):
+        if self.led_bar.selected_segment is not None:
+            speed = self.speed_slider_config.value()
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, _, reverse = seg
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.led_bar.update_colors()
+            # Update preview speed
+            self.mini_preview_config.set_speed(speed)
+
+    def on_reverse_config_changed(self, state):
+        if self.led_bar.selected_segment is not None:
+            reverse = state == Qt.Checked
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, speed, _ = seg
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.led_bar.update_colors()
+            # Update preview reverse
+            self.mini_preview_config.set_reverse(reverse)
+
+    def on_message_config_changed(self, message_name):
+        self.signal_combo_config.clear()
+        self.active_value_combo_config.clear()
+        self.inactive_value_combo_config.clear()
+        self.active_value_combo_config.setEnabled(False)
+        self.inactive_value_combo_config.setEnabled(False)
+        if message_name:
+            signals = self.dbc_manager.get_signals_for_message(message_name)
+            self.signal_combo_config.addItems(signals)
+        self.signal_combo_config.setEnabled(bool(message_name))
+        
+        # Update signal_info
+        if self.led_bar.selected_segment is not None:
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, speed, reverse = seg
+            if message_name:
+                signal_info = signal_info.copy() if signal_info else {}
+                signal_info['message'] = message_name
+                # Clear signal and values when message changes
+                if 'signal' in signal_info:
+                    del signal_info['signal']
+                if 'active_value' in signal_info:
+                    del signal_info['active_value']
+                if 'inactive_value' in signal_info:
+                    del signal_info['inactive_value']
+            else:
+                signal_info = {}
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.update_list()
+
+    def on_signal_config_changed(self, signal_name):
+        self.active_value_combo_config.clear()
+        self.inactive_value_combo_config.clear()
+        self.active_value_combo_config.setEnabled(False)
+        self.inactive_value_combo_config.setEnabled(False)
+        if signal_name:
+            message_text = self.message_combo_config.currentText()
+            if message_text:
+                full_signal_name = f"{message_text}.{signal_name}"
+                values = self.dbc_manager.get_signal_value_names(full_signal_name)
+                if values:
+                    self.active_value_combo_config.addItems(values)
+                    self.inactive_value_combo_config.addItems(values)
+                    self.active_value_combo_config.setEnabled(True)
+                    self.inactive_value_combo_config.setEnabled(True)
+        
+        # Update signal_info
+        if self.led_bar.selected_segment is not None:
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, speed, reverse = seg
+            if signal_name:
+                signal_info = signal_info.copy() if signal_info else {}
+                signal_info['signal'] = signal_name
+                # Clear values when signal changes
+                if 'active_value' in signal_info:
+                    del signal_info['active_value']
+                if 'inactive_value' in signal_info:
+                    del signal_info['inactive_value']
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.update_list()
+
+    def on_active_value_config_changed(self, value):
+        if self.led_bar.selected_segment is not None:
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, speed, reverse = seg
+            signal_info = signal_info.copy() if signal_info else {}
+            signal_info['active_value'] = value
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.update_list()
+
+    def on_inactive_value_config_changed(self, value):
+        if self.led_bar.selected_segment is not None:
+            seg = self.led_bar.segments[self.led_bar.selected_segment]
+            start, end, color, mode, signal_info, speed, reverse = seg
+            signal_info = signal_info.copy() if signal_info else {}
+            signal_info['inactive_value'] = value
+            self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
+            self.update_list()
+
+    def on_apply_config(self):
+        # Save configuration to file
+        self.save_config()
+
+    def on_delete_segment(self):
+        if self.led_bar.selected_segment is not None:
+            reply = QMessageBox.question(self, "Confirmer la suppression", 
+                                       "Êtes-vous sûr de vouloir supprimer ce segment ?",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.led_bar.segments.pop(self.led_bar.selected_segment)
+                self.led_bar.selected_segment = None
+                self.led_bar.update_colors()
+                self.update_list()
+                self.update_segment_config()
+                self.save_config()
 
 if __name__ == "__main__":
     app = QApplication()

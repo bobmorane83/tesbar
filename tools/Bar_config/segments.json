@@ -4,13 +4,10 @@
         {
             "start": 0,
             "end": 0,
-            "color": "#e80500",
-            "mode": "RAINBOW",
+            "color": "#00d21c",
+            "mode": "CHASE_BLACKOUT",
             "signal_info": {
                 "message": "ID293UI_chassisControl",
-                "signal": "UI_pedalSafetyEnable",
-                "active_value": "PEDAL_SAFETY_OFF",
-                "inactive_value": "PEDAL_SAFETY_OFF",
                 "id": 659,
                 "start": 42,
                 "length": 2,
@@ -26,8 +23,12 @@
                     "1": "PEDAL_SAFETY_ON",
                     "3": "SNA"
                 },
-                "comment": null
-            }
+                "comment": null,
+                "name": "test",
+                "signal": "UI_pedalSafetyEnable"
+            },
+            "speed": 1,
+            "reverse": false
         },
         {
             "start": 0,
@@ -36,9 +37,6 @@
             "mode": "RUNNING_LIGHTS",
             "signal_info": {
                 "message": "ID239DAS_lanes",
-                "signal": "DAS_leftLineUsage",
-                "active_value": "REJECTED_UNAVAILABLE",
-                "inactive_value": "AVAILABLE",
                 "id": 569,
                 "start": 48,
                 "length": 2,
@@ -55,8 +53,13 @@
                     "2": "FUSED",
                     "0": "REJECTED_UNAVAILABLE"
                 },
-                "comment": null
-            }
+                "comment": null,
+                "name": "Segment 2",
+                "signal": "DAS_leftLineUsage",
+                "inactive_value": "AVAILABLE"
+            },
+            "speed": 88,
+            "reverse": false
         }
     ]
 }

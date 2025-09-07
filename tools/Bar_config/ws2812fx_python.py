@@ -88,14 +88,6 @@ class WS2812FXMode(Enum):
     FLIPBOOK = 69
     POPCORN = 70
     OSCILLATOR = 71
-    CUSTOM_0 = 72
-    CUSTOM_1 = 73
-    CUSTOM_2 = 74
-    CUSTOM_3 = 75
-    CUSTOM_4 = 76
-    CUSTOM_5 = 77
-    CUSTOM_6 = 78
-    CUSTOM_7 = 79
 
 
 class WS2812FXSegment:
@@ -118,6 +110,7 @@ class WS2812FXSegment:
         self.aux_param = 0
         self.aux_param2 = 0
         self.aux_param3 = 0
+        self.last_update_time = 0  # Timestamp de la dernière mise à jour
 
 
 class WS2812FX:
@@ -146,9 +139,6 @@ class WS2812FX:
         self.brightness = 255
         self.running = False
         self.last_update = time.time()
-
-        # Modes personnalisés
-        self.custom_modes: List[Callable] = [None] * 8
 
     def add_segment(self, start: int, stop: int, mode: WS2812FXMode = WS2812FXMode.STATIC,
                    colors: List[Tuple[int, int, int]] = None, speed: int = 1000,
@@ -209,22 +199,19 @@ class WS2812FX:
 
     def _update_segment(self, segment: WS2812FXSegment):
         """Met à jour un segment spécifique"""
+        current_time = time.time()
+
+        # Vérifier si assez de temps s'est écoulé depuis la dernière mise à jour
+        if current_time - segment.last_update_time < (segment.speed / 1000.0):
+            return
+
         mode_function = getattr(self, f"mode_{segment.mode.name.lower()}", None)
         if mode_function:
             delay = mode_function(segment)
             segment.counter_mode_call += 1
-        else:
-            # Mode personnalisé
-            if WS2812FXMode.CUSTOM_0.value <= segment.mode.value <= WS2812FXMode.CUSTOM_7.value:
-                custom_index = segment.mode.value - WS2812FXMode.CUSTOM_0.value
-                if self.custom_modes[custom_index]:
-                    delay = self.custom_modes[custom_index](segment)
-                    segment.counter_mode_call += 1
+            segment.last_update_time = current_time
 
-    def set_custom_mode(self, index: int, function: Callable):
-        """Définit un mode personnalisé"""
-        if 0 <= index < len(self.custom_modes):
-            self.custom_modes[index] = function
+
 
     # Fonctions utilitaires
     def color_blend(self, color1: Tuple[int, int, int], color2: Tuple[int, int, int], ratio: int) -> Tuple[int, int, int]:
@@ -508,6 +495,242 @@ class WS2812FX:
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= 3:
+            segment.counter_mode_step = 0
+
+        return segment.speed
+
+    def mode_chase_white(self, segment: WS2812FXSegment) -> int:
+        """Chasse avec couleur blanche"""
+        for i in range(segment.length):
+            if (i + segment.counter_mode_step) % 4 == 0:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (255, 255, 255))  # Blanc
+            else:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= 4:
+            segment.counter_mode_step = 0
+
+        return segment.speed
+
+    def mode_chase_color(self, segment: WS2812FXSegment) -> int:
+        """Chasse avec la couleur du segment"""
+        for i in range(segment.length):
+            if (i + segment.counter_mode_step) % 4 == 0:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, segment.colors[0])
+            else:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= 4:
+            segment.counter_mode_step = 0
+
+        return segment.speed
+
+    def mode_chase_random(self, segment: WS2812FXSegment) -> int:
+        """Chasse avec couleurs aléatoires"""
+        for i in range(segment.length):
+            if (i + segment.counter_mode_step) % 4 == 0:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                # Couleur aléatoire basée sur la position et le compteur
+                random_color = (
+                    (segment.counter_mode_call + i * 37) % 256,
+                    (segment.counter_mode_call + i * 71) % 256,
+                    (segment.counter_mode_call + i * 113) % 256
+                )
+                self.set_pixel_color(pos, random_color)
+            else:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= 4:
+            segment.counter_mode_step = 0
+
+        return segment.speed
+
+    def mode_chase_rainbow(self, segment: WS2812FXSegment) -> int:
+        """Chasse arc-en-ciel"""
+        for i in range(segment.length):
+            if (i + segment.counter_mode_step) % 4 == 0:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                color = self.color_wheel((i * 256 // segment.length + segment.counter_mode_call) & 0xFF)
+                self.set_pixel_color(pos, color)
+            else:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= 4:
+            segment.counter_mode_step = 0
+
+        return segment.speed
+
+    def mode_chase_flash(self, segment: WS2812FXSegment) -> int:
+        """Chasse avec effet flash"""
+        for i in range(segment.length):
+            if (i + segment.counter_mode_step) % 4 == 0:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                # Effet flash : alternance rapide
+                if segment.counter_mode_call % 2 == 0:
+                    self.set_pixel_color(pos, segment.colors[0])
+                else:
+                    self.set_pixel_color(pos, (255, 255, 255))  # Blanc flash
+            else:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= 4:
+            segment.counter_mode_step = 0
+
+        return segment.speed // 2  # Plus rapide pour l'effet flash
+
+    def mode_chase_flash_random(self, segment: WS2812FXSegment) -> int:
+        """Chasse flash avec couleurs aléatoires"""
+        for i in range(segment.length):
+            if (i + segment.counter_mode_step) % 4 == 0:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                # Couleur aléatoire avec effet flash
+                if segment.counter_mode_call % 2 == 0:
+                    random_color = (
+                        (segment.counter_mode_call + i * 37) % 256,
+                        (segment.counter_mode_call + i * 71) % 256,
+                        (segment.counter_mode_call + i * 113) % 256
+                    )
+                    self.set_pixel_color(pos, random_color)
+                else:
+                    self.set_pixel_color(pos, (255, 255, 255))  # Blanc flash
+            else:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= 4:
+            segment.counter_mode_step = 0
+
+        return segment.speed // 2  # Plus rapide pour l'effet flash
+
+    def mode_chase_rainbow_white(self, segment: WS2812FXSegment) -> int:
+        """Chasse arc-en-ciel avec fond blanc"""
+        for i in range(segment.length):
+            if (i + segment.counter_mode_step) % 4 == 0:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                color = self.color_wheel((i * 256 // segment.length + segment.counter_mode_call) & 0xFF)
+                self.set_pixel_color(pos, color)
+            else:
+                if segment.reverse:
+                    pos = segment.stop - i
+                else:
+                    pos = segment.start + i
+                self.set_pixel_color(pos, (32, 32, 32))  # Blanc très atténué
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= 4:
+            segment.counter_mode_step = 0
+
+        return segment.speed
+
+    def mode_chase_blackout(self, segment: WS2812FXSegment) -> int:
+        """Chasse avec extinction progressive"""
+        for i in range(segment.length):
+            if segment.reverse:
+                pos = segment.stop - i
+            else:
+                pos = segment.start + i
+
+            # Distance par rapport à la position active
+            distance = abs(i - segment.counter_mode_step)
+
+            if distance == 0:
+                self.set_pixel_color(pos, segment.colors[0])  # LED active
+            elif distance <= 2:
+                # Atténuation progressive
+                factor = (3 - distance) / 3
+                r = int(segment.colors[0][0] * factor)
+                g = int(segment.colors[0][1] * factor)
+                b = int(segment.colors[0][2] * factor)
+                self.set_pixel_color(pos, (r, g, b))
+            else:
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= segment.length:
+            segment.counter_mode_step = 0
+
+        return segment.speed
+
+    def mode_chase_blackout_rainbow(self, segment: WS2812FXSegment) -> int:
+        """Chasse extinction arc-en-ciel"""
+        for i in range(segment.length):
+            if segment.reverse:
+                pos = segment.stop - i
+            else:
+                pos = segment.start + i
+
+            # Distance par rapport à la position active
+            distance = abs(i - segment.counter_mode_step)
+
+            if distance == 0:
+                # LED active avec couleur arc-en-ciel
+                color = self.color_wheel((i * 256 // segment.length + segment.counter_mode_call) & 0xFF)
+                self.set_pixel_color(pos, color)
+            elif distance <= 2:
+                # Atténuation progressive avec couleur arc-en-ciel
+                factor = (3 - distance) / 3
+                color = self.color_wheel((i * 256 // segment.length + segment.counter_mode_call) & 0xFF)
+                r = int(color[0] * factor)
+                g = int(color[1] * factor)
+                b = int(color[2] * factor)
+                self.set_pixel_color(pos, (r, g, b))
+            else:
+                self.set_pixel_color(pos, (0, 0, 0))  # Noir
+
+        segment.counter_mode_step += 1
+        if segment.counter_mode_step >= segment.length:
             segment.counter_mode_step = 0
 
         return segment.speed
@@ -825,38 +1048,7 @@ class WS2812FX:
 
         return segment.speed // 32
 
-    # Modes personnalisés (placeholders)
-    def mode_custom_0(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 0"""
-        return segment.speed
 
-    def mode_custom_1(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 1"""
-        return segment.speed
-
-    def mode_custom_2(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 2"""
-        return segment.speed
-
-    def mode_custom_3(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 3"""
-        return segment.speed
-
-    def mode_custom_4(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 4"""
-        return segment.speed
-
-    def mode_custom_5(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 5"""
-        return segment.speed
-
-    def mode_custom_6(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 6"""
-        return segment.speed
-
-    def mode_custom_7(self, segment: WS2812FXSegment) -> int:
-        """Mode personnalisé 7"""
-        return segment.speed
 
 
 # Fonction utilitaire pour tester
