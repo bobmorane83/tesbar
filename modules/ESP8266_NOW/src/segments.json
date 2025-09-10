@@ -1,0 +1,70 @@
+{
+    "num_leds": 16,
+    "segments": [
+        {
+            "segment": {
+                "start": 0,
+                "end": 0,
+                "color": "#00ed27",
+                "mode": "BLINK",
+                "speed": 229,
+                "reverse": false,
+                "name": ""
+            },
+            "signal": {
+                "message": "ID389DAS_status2",
+                "signal": "DAS_csaState",
+                "id": 905,
+                "start": 32,
+                "length": 2,
+                "byte_order": "little_endian",
+                "is_signed": false,
+                "scale": 1,
+                "offset": 0,
+                "minimum": 0,
+                "maximum": 3,
+                "unit": null,
+                "choices": {
+                    "1": "CSA_EXTERNAL_STATE_AVAILABLE",
+                    "2": "CSA_EXTERNAL_STATE_ENABLE",
+                    "3": "CSA_EXTERNAL_STATE_HOLD",
+                    "0": "CSA_EXTERNAL_STATE_UNAVAILABLE"
+                },
+                "active_value": "CSA_EXTERNAL_STATE_AVAILABLE",
+                "inactive_value": "CSA_EXTERNAL_STATE_ENABLE"
+            }
+        },
+        {
+            "segment": {
+                "start": 15,
+                "end": 15,
+                "color": "#00ed36",
+                "mode": "BLINK",
+                "speed": 316,
+                "reverse": false,
+                "name": ""
+            },
+            "signal": {
+                "message": "ID399DAS_status",
+                "signal": "DAS_forwardCollisionWarning",
+                "id": 921,
+                "start": 22,
+                "length": 2,
+                "byte_order": "little_endian",
+                "is_signed": false,
+                "scale": 1,
+                "offset": 0,
+                "minimum": 0,
+                "maximum": 3,
+                "unit": null,
+                "choices": {
+                    "1": "FORWARD_COLLISION_WARNING",
+                    "0": "NONE",
+                    "3": "SNA"
+                },
+                "inactive_value": "SNA",
+                "active_value": "FORWARD_COLLISION_WARNING"
+            }
+        }
+    ]
+}

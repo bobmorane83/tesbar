@@ -1,5 +1,10 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <FS.h>
+#include <ArduinoJson.h>
+#include <map>
+#include <vector>
 extern "C" {
 #include <espnow.h>
 }
@@ -10,7 +15,6 @@ extern "C" {
 #define NUM_LEDS 16 // Maximum number of LEDs
 
 LedManager leds(LED_PIN, NUM_LEDS);
-uint8_t signal_to_segment[16] = {0xFF}; // Map signal index to LED segment
 
 // --- CAN frame message format ---
 typedef struct __attribute__((packed)) {
@@ -31,52 +35,32 @@ volatile uint8_t rx_head = 0;
 volatile uint8_t rx_tail = 0;
 rx_item_t rx_queue[RX_QUEUE_SIZE];
 
-// --- Description structure correspondant au JSON ---
+// --- Structure pour les signaux ---
 typedef struct {
-  uint32_t message_id;
-  const char* message_name;
-  const char* signal_name;
+  uint32_t id;
+  String signal_name;
   uint8_t start_bit;
   uint8_t length;
-  bool little_endian; // true si little_endian
-  const char* values[4]; // max 4 pour cet exemple
-} can_signal_desc_t;
+  bool little_endian;
+  String active_value;
+  String inactive_value;
+  std::map<uint32_t, String> choices;
+} signal_desc_t;
 
-// --- Liste des signaux basés sur ton JSON ---
-can_signal_desc_t can_desc[] = {
-  {
-    1013,
-    "ID3F5VCFRONT_lighting",
-    "VCFRONT_indicatorLeftRequest",
-    0,
-    2,
-    true,
-    { "TURN_SIGNAL_OFF", "TURN_SIGNAL_ACTIVE_LOW", "TURN_SIGNAL_ACTIVE_HIGH" }
-  },
-  {
-    1013,
-    "ID3F5VCFRONT_lighting",
-    "VCFRONT_indicatorRightRequest",
-    2,
-    2,
-    true,
-    { "TURN_SIGNAL_OFF", "TURN_SIGNAL_ACTIVE_LOW", "TURN_SIGNAL_ACTIVE_HIGH" }
-  }
-};
+// --- Structure pour les segments ---
+typedef struct {
+  uint8_t start;
+  uint8_t end;
+  String color;
+  String mode;
+  uint16_t speed;
+  bool reverse;
+  String name;
+  signal_desc_t signal;
+  uint8_t segment_index;
+} segment_desc_t;
 
-const size_t NUM_SIGNALS = sizeof(can_desc)/sizeof(can_desc[0]);
-
-// --- Callback de réception ESP-NOW ---
-IRAM_ATTR void onDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
-  if (len != sizeof(can_esp_msg_t)) return;
-
-  uint8_t next = (uint8_t)((rx_head + 1) % RX_QUEUE_SIZE);
-  if (next == rx_tail) return; // queue pleine
-
-  memcpy(rx_queue[rx_head].mac, mac, 6);
-  memcpy(&rx_queue[rx_head].frame, data, sizeof(can_esp_msg_t));
-  rx_head = next;
-}
+std::vector<segment_desc_t> segments;
 
 // --- Fonction pour extraire un champ de bits ---
 uint32_t extract_bits(const uint8_t *data, uint8_t start_bit, uint8_t length, bool little_endian) {
@@ -99,24 +83,190 @@ uint32_t extract_bits(const uint8_t *data, uint8_t start_bit, uint8_t length, bo
   return val;
 }
 
+// --- Web Server Configuration ---
+ESP8266WebServer server(80);
+const char* ssid = "ESP8266_JSON_Uploader";
+const char* password = "password123";
+
+// --- Callback de réception ESP-NOW ---
+IRAM_ATTR void onDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
+  if (len != sizeof(can_esp_msg_t)) return;
+
+  uint8_t next = (uint8_t)((rx_head + 1) % RX_QUEUE_SIZE);
+  if (next == rx_tail) return; // queue pleine
+
+  memcpy(rx_queue[rx_head].mac, mac, 6);
+  memcpy(&rx_queue[rx_head].frame, data, sizeof(can_esp_msg_t));
+  rx_head = next;
+}
+
+// --- Fonction pour charger la configuration depuis segments.json ---
+void loadConfiguration() {
+  if (!SPIFFS.exists("/segments.json")) {
+    Serial.println("segments.json not found!");
+    return;
+  }
+
+  File file = SPIFFS.open("/segments.json", "r");
+  if (!file) {
+    Serial.println("Failed to open segments.json");
+    return;
+  }
+
+  // Lire le contenu du fichier
+  String jsonContent = "";
+  while (file.available()) {
+    jsonContent += (char)file.read();
+  }
+  file.close();
+
+  // Parser le JSON
+  DynamicJsonDocument doc(2048); // Ajuster la taille si nécessaire
+  DeserializationError error = deserializeJson(doc, jsonContent);
+  if (error) {
+    Serial.print("JSON parse error: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // Extraire num_leds si nécessaire (mais déjà défini)
+  // uint8_t num_leds = doc["num_leds"];
+
+  // Parser les segments
+  JsonArray segmentsArray = doc["segments"];
+  for (JsonObject segmentObj : segmentsArray) {
+    segment_desc_t seg;
+
+    // Parser le segment
+    JsonObject segJson = segmentObj["segment"];
+    seg.start = segJson["start"];
+    seg.end = segJson["end"];
+    seg.color = segJson["color"].as<String>();
+    seg.mode = segJson["mode"].as<String>();
+    seg.speed = segJson["speed"];
+    seg.reverse = segJson["reverse"];
+    seg.name = segJson["name"].as<String>();
+
+    // Parser le signal
+    JsonObject sigJson = segmentObj["signal"];
+    seg.signal.id = sigJson["id"];
+    seg.signal.signal_name = sigJson["signal"].as<String>();
+    seg.signal.start_bit = sigJson["start"];
+    seg.signal.length = sigJson["length"];
+    seg.signal.little_endian = (sigJson["byte_order"] == "little_endian");
+    seg.signal.active_value = sigJson["active_value"].as<String>();
+    seg.signal.inactive_value = sigJson["inactive_value"].as<String>();
+
+    // Parser les choices
+    JsonObject choicesObj = sigJson["choices"];
+    for (JsonPair kv : choicesObj) {
+      uint32_t key = atoi(kv.key().c_str());
+      String value = kv.value().as<String>();
+      seg.signal.choices[key] = value;
+    }
+
+    // Créer le segment dans LedManager (assumer une méthode addSegment)
+    // seg.segment_index = leds.addSegment(seg.start, seg.end, seg.mode, seg.speed, seg.reverse, seg.color);
+    // Pour l'instant, utiliser addSingleLedSegment si start == end
+    if (seg.start == seg.end) {
+      seg.segment_index = leds.addSingleLedSegment(seg.start);
+    } else {
+      // Si plusieurs LEDs, assumer une méthode pour plage
+      // seg.segment_index = leds.addSegment(seg.start, seg.end);
+      Serial.printf("Segment with multiple LEDs not supported yet: %d-%d\n", seg.start, seg.end);
+      seg.segment_index = 0xFF; // Invalide
+    }
+
+    segments.push_back(seg);
+  }
+
+  Serial.printf("Loaded %d segments\n", segments.size());
+}
+
+// --- Web Server Handlers ---
+void handleRoot() {
+  String html = "<html><body>";
+  html += "<h1>Upload JSON Configuration</h1>";
+  html += "<form action='/upload' method='post' enctype='multipart/form-data'>";
+  html += "<input type='file' name='jsonFile' accept='.json'><br><br>";
+  html += "<input type='submit' value='Upload'>";
+  html += "</form>";
+  
+  // Check if segments.json exists and display it
+  if (SPIFFS.exists("/segments.json")) {
+    html += "<hr><h2>Fichier existant en flash :</h2>";
+    File file = SPIFFS.open("/segments.json", "r");
+    if (file) {
+      html += "<pre>";
+      while (file.available()) {
+        html += (char)file.read();
+      }
+      html += "</pre>";
+      file.close();
+    } else {
+      html += "<p>Erreur lors de la lecture du fichier.</p>";
+    }
+  }
+  
+  html += "</body></html>";
+  server.send(200, "text/html", html);
+}
+
+void handleUpload() {
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    String filename = "/segments.json"; // Save as segments.json in SPIFFS
+    SPIFFS.remove(filename); // Remove existing file
+    File file = SPIFFS.open(filename, "w");
+    if (!file) {
+      server.send(500, "text/plain", "Failed to open file for writing");
+      return;
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    File file = SPIFFS.open("/segments.json", "a");
+    if (file) {
+      file.write(upload.buf, upload.currentSize);
+      file.close();
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    server.send(200, "text/plain", "File uploaded successfully!");
+  }
+}
+
 // --- Setup ---
 void setup() {
   Serial.begin(115200);
   delay(100);
   Serial.println("\nESP8266 ESP-NOW receiver starting...");
 
+  // Initialize SPIFFS
+  if (!SPIFFS.begin()) {
+    Serial.println("SPIFFS initialization failed!");
+    return;
+  }
+
+  // Load configuration from segments.json
+  loadConfiguration();
+
   // Initialize LED strip
   leds.begin();
   
-  // Create one segment per signal, each with 1 LED in static mode
-  for (size_t i = 0; i < NUM_SIGNALS; i++) {
-    signal_to_segment[i] = leds.addSingleLedSegment(i);
-    if (signal_to_segment[i] == 0xFF) {
-      Serial.printf("Failed to create segment for signal %u\n", i);
-    }
-  }
+  // Segments are already created in loadConfiguration()
 
-  WiFi.mode(WIFI_STA);
+  // Setup WiFi Access Point
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ssid, password);
+  Serial.println("WiFi AP started");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP());
+
+  // Setup Web Server
+  server.on("/", handleRoot);
+  server.on("/upload", HTTP_POST, []() { server.send(200); }, handleUpload);
+  server.begin();
+  Serial.println("Web server started");
+
+  // ESP-NOW setup
   WiFi.disconnect();
   delay(100);
 
@@ -131,6 +281,8 @@ void setup() {
 
 // --- Loop ---
 void loop() {
+  server.handleClient(); // Handle web server requests
+
   const uint8_t MAX_PER_LOOP = 8;
   uint8_t processed = 0;
 
@@ -141,22 +293,23 @@ void loop() {
     rx_tail = (uint8_t)((rx_tail + 1) % RX_QUEUE_SIZE);
 
     // Filtrage et affichage
-    for (size_t s = 0; s < NUM_SIGNALS; ++s) {
-      if (item.frame.id == can_desc[s].message_id) {
-        uint32_t raw = extract_bits(item.frame.data, can_desc[s].start_bit, can_desc[s].length, can_desc[s].little_endian);
-        const char* str_val = "UNKNOWN";
-        if (raw < 4) str_val = can_desc[s].values[raw];
+    for (auto& seg : segments) {
+      if (item.frame.id == seg.signal.id) {
+        uint32_t raw = extract_bits(item.frame.data, seg.signal.start_bit, seg.signal.length, seg.signal.little_endian);
+        String str_val = seg.signal.choices.count(raw) ? seg.signal.choices[raw] : "UNKNOWN";
 
         // Serial.printf("[CAN] id=0x%X signal=%s value=%s\n",
         //               item.frame.id,
-        //               can_desc[s].signal_name,
-        //               str_val);
+        //               seg.signal.signal_name.c_str(),
+        //               str_val.c_str());
         
         // Update LED segment if mapped
-        if (signal_to_segment[s] != 0xFF) {
-          bool is_on = (strcmp(str_val, "TURN_SIGNAL_ACTIVE_HIGH") == 0) ||
-                      (strcmp(str_val, "TURN_SIGNAL_ACTIVE_LOW") == 0);
-          leds.updateSegment(signal_to_segment[s], is_on);
+        if (seg.segment_index != 0xFF) {
+          bool is_active = (str_val == seg.signal.active_value);
+          bool is_inactive = (str_val == seg.signal.inactive_value);
+          if (is_active || is_inactive) {
+            leds.updateSegment(seg.segment_index, is_active);
+          }
         }
       }
     }
