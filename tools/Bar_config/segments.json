@@ -30,7 +30,8 @@
                     "3": "CSA_EXTERNAL_STATE_HOLD",
                     "0": "CSA_EXTERNAL_STATE_UNAVAILABLE"
                 },
-                "active_value": "CSA_EXTERNAL_STATE_AVAILABLE"
+                "active_value": "CSA_EXTERNAL_STATE_AVAILABLE",
+                "inactive_value": "CSA_EXTERNAL_STATE_ENABLE"
             }
         },
         {
@@ -60,7 +61,9 @@
                     "1": "FORWARD_COLLISION_WARNING",
                     "0": "NONE",
                     "3": "SNA"
-                }
+                },
+                "inactive_value": "SNA",
+                "active_value": "FORWARD_COLLISION_WARNING"
             }
         }
     ]

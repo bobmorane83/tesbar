@@ -1088,7 +1088,7 @@ class MainWindow(QMainWindow):
             self.update_list()
             self.led_bar.update_colors()
             # Sauvegarde automatique après modification du signal
-            self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
+            self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_active_value_config_changed(self, value):
         if self.led_bar.selected_segment is not None:
@@ -1100,7 +1100,7 @@ class MainWindow(QMainWindow):
             self.update_list()
             self.led_bar.update_colors()
             # Sauvegarde automatique après modification de la valeur active
-            self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
+            self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_inactive_value_config_changed(self, value):
         if self.led_bar.selected_segment is not None:
@@ -1112,11 +1112,11 @@ class MainWindow(QMainWindow):
             self.update_list()
             self.led_bar.update_colors()
             # Sauvegarde automatique après modification de la valeur inactive
-            self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
+            self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_apply_config(self):
         # Save configuration to file
-        self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
+        self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_delete_segment(self):
         if self.led_bar.selected_segment is not None:
@@ -1129,7 +1129,7 @@ class MainWindow(QMainWindow):
                 self.led_bar.update_colors()
                 self.update_list()
                 self.update_segment_config()
-                self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
+                self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
 if __name__ == "__main__":
     app = QApplication()
