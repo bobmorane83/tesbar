@@ -40,7 +40,7 @@
                 "end": 15,
                 "color": "#ff0000",
                 "mode": "COLOR_WIPE",
-                "speed": 198,
+                "speed": 72,
                 "reverse": false,
                 "name": ""
             },
