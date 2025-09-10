@@ -18,6 +18,24 @@ class LEDBar(QWidget):
         self.is_editing = False
         self.parent_window = parent_window
         self.setFixedHeight(50)
+        
+        # WS2812FX instance for main bar effects
+        self.ws2812fx = WS2812FX(num_leds)
+        self.effect_timer = QTimer()
+        self.effect_timer.timeout.connect(self.update_effects)
+        self.effect_timer.start(50)  # ~20 FPS
+
+    def update_effects(self):
+        """Update WS2812FX effects on main bar"""
+        if self.ws2812fx.running and self.segments:
+            self.ws2812fx.update()
+            
+            # Update LED colors from WS2812FX
+            for i in range(self.num_leds):
+                r, g, b = self.ws2812fx.leds[i]
+                self.led_colors[i] = QColor(r, g, b)
+            
+            self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -52,15 +70,6 @@ class LEDBar(QWidget):
             self.start_index = index
             self.end_index = index
             self.update()
-        elif event.button() == Qt.RightButton:
-            led_width = self.width() / self.num_leds
-            index = int(event.position().x() // led_width)
-            for i, seg in enumerate(self.segments):
-                if seg[0] <= index <= seg[1]:
-                    self.is_editing = True
-                    self.selected_segment = i
-                    self.show_config()
-                    break
 
     def mouseMoveEvent(self, event):
         if self.start_index is not None:
@@ -79,42 +88,48 @@ class LEDBar(QWidget):
             # Create segment with defaults
             self.segments.append((self.start_index, self.end_index, QColor('red'), 'static', {}, 1000, False))
             self.selected_segment = len(self.segments) - 1
-            self.show_config()
             self.start_index = None
             self.end_index = None
+            self.parent_window.update_segment_config()
+            self.parent_window.update_list()
+            self.update_colors()
 
-    def show_config(self):
-        if self.selected_segment is not None:
-            seg = self.segments[self.selected_segment]
-            dialog = SegmentConfigDialog(seg[2], seg[3], seg[4], seg[5], seg[6], self.is_editing)
-            if dialog.exec():
-                color, mode, code, speed, reverse = dialog.get_values()
-                if dialog.delete_requested:
-                    self.segments.pop(self.selected_segment)
-                    self.selected_segment = None
-                else:
-                    self.segments[self.selected_segment] = (seg[0], seg[1], color, mode, code, speed, reverse)
-                self.update_colors()
-                # Hide after config only for new segments
-                if not self.is_editing:
-                    self.selected_segment = None
-                    self.update()
-            else:
-                # Cancel pressed
-                if not self.is_editing:
-                    self.segments.pop()
-                    self.selected_segment = None
-                    self.update_colors()
-        self.is_editing = False
-        self.parent_window.save_config()
+    
 
     def update_colors(self):
-        self.led_colors = [QColor('gray')] * self.num_leds
-        if self.selected_segment is not None and self.selected_segment < len(self.segments):
-            seg = self.segments[self.selected_segment]
+        # Clear WS2812FX segments
+        self.ws2812fx.segments.clear()
+        
+        # Add all segments to WS2812FX
+        for seg in self.segments:
             start, end, color, mode, signal_info, speed, reverse = seg
-            for i in range(start, end + 1):
-                self.led_colors[i] = color
+            # Convert QColor to RGB tuple
+            rgb_color = (color.red(), color.green(), color.blue())
+            
+            # Convert mode string to WS2812FXMode enum
+            try:
+                ws2812fx_mode = getattr(WS2812FXMode, mode)
+            except AttributeError:
+                ws2812fx_mode = WS2812FXMode.STATIC
+            
+            # Add segment to WS2812FX
+            self.ws2812fx.add_segment(
+                start=start,
+                stop=end,
+                mode=ws2812fx_mode,
+                colors=[rgb_color],  # Use single color for now
+                speed=speed,
+                reverse=reverse
+            )
+        
+        # Start WS2812FX if we have segments
+        if self.segments:
+            self.ws2812fx.start()
+        else:
+            self.ws2812fx.stop()
+            # Reset to gray if no segments
+            self.led_colors = [QColor('gray')] * self.num_leds
+        
         self.update()
         self.parent_window.update_list()
 
@@ -129,7 +144,7 @@ class MiniLEDPreview(QWidget):
         self.ws2812fx = WS2812FX(num_leds)
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_preview)
-        self.setFixedHeight(30)
+        self.setFixedHeight(20)
         self.setMinimumWidth(400)
 
     def paintEvent(self, event):
@@ -137,28 +152,20 @@ class MiniLEDPreview(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         led_width = self.width() / self.num_leds
-        led_height = self.height() - 4
+        led_height = self.height()
 
         for i in range(self.num_leds):
             x = i * led_width
-            y = 2
+            y = 0
 
             # Couleur de la LED
             r, g, b = self.led_colors[i]
             color = QColor(r, g, b)
 
-            # Dessiner la LED
+            # Dessiner la LED comme un carré contigu
             painter.setBrush(color)
             painter.setPen(QPen(color.darker(150), 1))
-            painter.drawEllipse(x + 1, y, led_width - 2, led_height)
-
-            # Ajouter un effet de brillance
-            if r + g + b > 100:  # Si la LED est allumée
-                highlight_color = QColor(255, 255, 255, 100)
-                painter.setBrush(highlight_color)
-                painter.setPen(Qt.NoPen)
-                painter.drawEllipse(x + led_width * 0.2, y + led_height * 0.2,
-                                  led_width * 0.4, led_height * 0.4)
+            painter.drawRect(int(x), int(y), int(led_width), int(led_height))
 
     def set_mode(self, mode: WS2812FXMode, colors=None, speed=1000, reverse=False):
         """Définit le mode d'effet à prévisualiser"""
@@ -559,9 +566,6 @@ class MainWindow(QMainWindow):
         self.segment_list = QListWidget()
         self.segment_list.itemSelectionChanged.connect(self.on_segment_selected)
         left_layout.addWidget(self.segment_list)
-        self.config_btn = QPushButton("Configurer Segment")
-        self.config_btn.clicked.connect(self.on_config_btn_clicked)
-        left_layout.addWidget(self.config_btn)
         left_widget.setLayout(left_layout)
         splitter.addWidget(left_widget)
         
@@ -574,7 +578,7 @@ class MainWindow(QMainWindow):
         preview_layout = QVBoxLayout()
         preview_layout.addWidget(QLabel("Aperçu:"))
         self.mini_preview_config = MiniLEDPreview(50)  # Smaller preview for config panel
-        self.mini_preview_config.setFixedHeight(40)
+        self.mini_preview_config.setFixedHeight(20)
         preview_layout.addWidget(self.mini_preview_config)
         right_layout.addLayout(preview_layout)
         
@@ -642,6 +646,9 @@ class MainWindow(QMainWindow):
         self.reverse_checkbox_config.stateChanged.connect(self.on_reverse_config_changed)
         self.reverse_checkbox_config.setEnabled(False)
         right_layout.addWidget(self.reverse_checkbox_config)
+        
+        # Add spacing before CAN section
+        right_layout.addSpacing(10)
         
         # CAN Configuration section
         can_group = QGroupBox("Configuration CAN")
@@ -718,6 +725,7 @@ class MainWindow(QMainWindow):
         self.message_combo_config.addItems(self.dbc_manager.get_message_names())
         
         self.update_list()
+        self.led_bar.update_colors()
 
     def load_config(self):
         if os.path.exists('segments.json'):
@@ -762,17 +770,6 @@ class MainWindow(QMainWindow):
                 self.led_bar.update_colors()
                 self.update_segment_config()
 
-    def on_config_btn_clicked(self):
-        selected_items = self.segment_list.selectedItems()
-        if selected_items:
-            index = self.segment_list.row(selected_items[0])
-            if index < len(self.led_bar.segments):
-                self.led_bar.is_editing = True
-                self.led_bar.selected_segment = index
-                self.led_bar.show_config()
-        else:
-            QMessageBox.information(self, "Aucune sélection", "Veuillez sélectionner un segment dans la liste.")
-
     def on_code_selected(self, item):
         selected_text = item.text()
         for i, seg in enumerate(self.led_bar.segments):
@@ -800,6 +797,8 @@ class MainWindow(QMainWindow):
                         break
 
     def update_list(self):
+        if not hasattr(self, 'segment_list'):
+            return
         self.segment_list.itemSelectionChanged.disconnect(self.on_segment_selected)
         self.segment_list.clear()
         for i, seg in enumerate(self.led_bar.segments):
@@ -960,6 +959,7 @@ class MainWindow(QMainWindow):
             signal_info['name'] = name
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
+            self.led_bar.update_colors()
 
     def on_color_changed(self):
         if self.led_bar.selected_segment is not None:
@@ -1038,6 +1038,7 @@ class MainWindow(QMainWindow):
                 signal_info = {}
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
+            self.led_bar.update_colors()
 
     def on_signal_config_changed(self, signal_name):
         self.active_value_combo_config.clear()
@@ -1069,6 +1070,7 @@ class MainWindow(QMainWindow):
                     del signal_info['inactive_value']
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
+            self.led_bar.update_colors()
 
     def on_active_value_config_changed(self, value):
         if self.led_bar.selected_segment is not None:
@@ -1078,6 +1080,7 @@ class MainWindow(QMainWindow):
             signal_info['active_value'] = value
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
+            self.led_bar.update_colors()
 
     def on_inactive_value_config_changed(self, value):
         if self.led_bar.selected_segment is not None:
@@ -1087,6 +1090,7 @@ class MainWindow(QMainWindow):
             signal_info['inactive_value'] = value
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
+            self.led_bar.update_colors()
 
     def on_apply_config(self):
         # Save configuration to file

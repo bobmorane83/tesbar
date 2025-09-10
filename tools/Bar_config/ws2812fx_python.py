@@ -159,6 +159,13 @@ class WS2812FX:
             return self.leds[index]
         return (0, 0, 0)
 
+    def get_segment_colors_safe(self, segment: WS2812FXSegment, index: int) -> Tuple[int, int, int]:
+        """Récupère une couleur du segment de manière sécurisée"""
+        if segment.colors and 0 <= index < len(segment.colors):
+            return segment.colors[index]
+        # Couleur par défaut si l'index est hors limites
+        return self.get_segment_colors_safe(segment, 0) if segment.colors else (0, 0, 0)
+
     def fill(self, color: Tuple[int, int, int], start: int = 0, length: int = None):
         """Remplit une plage de LEDs avec une couleur"""
         if length is None:
@@ -254,15 +261,15 @@ class WS2812FX:
 
     def mode_static(self, segment: WS2812FXSegment) -> int:
         """Lumière fixe"""
-        self.fill(segment.colors[0], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 0), segment.start, segment.length)
         return segment.speed
 
     def mode_blink(self, segment: WS2812FXSegment) -> int:
         """Clignotement normal"""
         if segment.counter_mode_step % 2 == 0:
-            self.fill(segment.colors[0], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 0), segment.start, segment.length)
         else:
-            self.fill(segment.colors[1], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
         segment.counter_mode_step += 1
         return segment.speed
 
@@ -272,7 +279,7 @@ class WS2812FX:
         if segment.counter_mode_step % 2 == 0:
             self.fill(color, segment.start, segment.length)
         else:
-            self.fill(segment.colors[1], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
         segment.counter_mode_step += 1
         return segment.speed
 
@@ -282,7 +289,7 @@ class WS2812FX:
         if lum > 255:
             lum = 511 - lum  # 0 -> 255 -> 0
 
-        color = self.color_blend(segment.colors[1], segment.colors[0], lum)
+        color = self.color_blend(self.get_segment_colors_safe(segment, 1), self.get_segment_colors_safe(segment, 0), lum)
         self.fill(color, segment.start, segment.length)
 
         segment.counter_mode_step += 4
@@ -297,7 +304,7 @@ class WS2812FX:
         if lum > 255:
             lum = 511 - lum  # 0 -> 255 -> 0
 
-        color = self.color_blend(segment.colors[1], segment.colors[0], lum)
+        color = self.color_blend(self.get_segment_colors_safe(segment, 1), self.get_segment_colors_safe(segment, 0), lum)
         self.fill(color, segment.start, segment.length)
 
         segment.counter_mode_step += 4
@@ -314,13 +321,13 @@ class WS2812FX:
             pos = segment.start + segment.counter_mode_step
 
         if pos >= segment.start and pos <= segment.stop:
-            self.set_pixel_color(pos, segment.colors[0])
+            self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= segment.length:
             segment.counter_mode_step = 0
             # Remplir avec la couleur de fond
-            self.fill(segment.colors[1], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         return segment.speed // segment.length
 
@@ -332,13 +339,13 @@ class WS2812FX:
             pos = segment.start + segment.counter_mode_step
 
         if pos >= segment.start and pos <= segment.stop:
-            self.set_pixel_color(pos, segment.colors[1])
+            self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 1))
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= segment.length:
             segment.counter_mode_step = 0
             # Remplir avec la couleur principale
-            self.fill(segment.colors[0], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 0), segment.start, segment.length)
 
         return segment.speed // segment.length
 
@@ -380,12 +387,12 @@ class WS2812FX:
                 pos = segment.stop - segment.counter_mode_step
             else:
                 pos = segment.start + segment.counter_mode_step
-            self.set_pixel_color(pos, segment.colors[0])
+            self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= segment.length * 2:
             segment.counter_mode_step = 0
-            self.fill(segment.colors[1], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         return segment.speed // segment.length
 
@@ -419,7 +426,15 @@ class WS2812FX:
 
     def mode_scan(self, segment: WS2812FXSegment) -> int:
         """Balayage"""
-        self.fill(segment.colors[1], segment.start, segment.length)
+        # Ensure we have at least 2 colors
+        if len(segment.colors) < 2:
+            bg_color = self.get_segment_colors_safe(segment, 0) if segment.colors else (0, 0, 0)
+            fg_color = bg_color
+        else:
+            bg_color = self.get_segment_colors_safe(segment, 1)
+            fg_color = self.get_segment_colors_safe(segment, 0)
+
+        self.fill(bg_color, segment.start, segment.length)
 
         if segment.reverse:
             pos = segment.stop - segment.counter_mode_step
@@ -427,7 +442,7 @@ class WS2812FX:
             pos = segment.start + segment.counter_mode_step
 
         if pos >= segment.start and pos <= segment.stop:
-            self.set_pixel_color(pos, segment.colors[0])
+            self.set_pixel_color(pos, fg_color)
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= segment.length:
@@ -437,16 +452,16 @@ class WS2812FX:
 
     def mode_dual_scan(self, segment: WS2812FXSegment) -> int:
         """Balayage double"""
-        self.fill(segment.colors[1], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         pos1 = segment.start + segment.counter_mode_step
         pos2 = segment.stop - segment.counter_mode_step
 
         if pos1 <= pos2:
             if pos1 >= segment.start and pos1 <= segment.stop:
-                self.set_pixel_color(pos1, segment.colors[0])
+                self.set_pixel_color(pos1, self.get_segment_colors_safe(segment, 0))
             if pos2 >= segment.start and pos2 <= segment.stop:
-                self.set_pixel_color(pos2, segment.colors[0])
+                self.set_pixel_color(pos2, self.get_segment_colors_safe(segment, 0))
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= segment.length // 2:
@@ -462,13 +477,13 @@ class WS2812FX:
                     pos = segment.stop - i
                 else:
                     pos = segment.start + i
-                self.set_pixel_color(pos, segment.colors[0])
+                self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))
             else:
                 if segment.reverse:
                     pos = segment.stop - i
                 else:
                     pos = segment.start + i
-                self.set_pixel_color(pos, segment.colors[1])
+                self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 1))
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= 3:
@@ -491,7 +506,7 @@ class WS2812FX:
                     pos = segment.stop - i
                 else:
                     pos = segment.start + i
-                self.set_pixel_color(pos, segment.colors[1])
+                self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 1))
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= 3:
@@ -529,7 +544,7 @@ class WS2812FX:
                     pos = segment.stop - i
                 else:
                     pos = segment.start + i
-                self.set_pixel_color(pos, segment.colors[0])
+                self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))
             else:
                 if segment.reverse:
                     pos = segment.stop - i
@@ -604,7 +619,7 @@ class WS2812FX:
                     pos = segment.start + i
                 # Effet flash : alternance rapide
                 if segment.counter_mode_call % 2 == 0:
-                    self.set_pixel_color(pos, segment.colors[0])
+                    self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))
                 else:
                     self.set_pixel_color(pos, (255, 255, 255))  # Blanc flash
             else:
@@ -686,13 +701,13 @@ class WS2812FX:
             distance = abs(i - segment.counter_mode_step)
 
             if distance == 0:
-                self.set_pixel_color(pos, segment.colors[0])  # LED active
+                self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))  # LED active
             elif distance <= 2:
                 # Atténuation progressive
                 factor = (3 - distance) / 3
-                r = int(segment.colors[0][0] * factor)
-                g = int(segment.colors[0][1] * factor)
-                b = int(segment.colors[0][2] * factor)
+                r = int(self.get_segment_colors_safe(segment, 0)[0] * factor)
+                g = int(self.get_segment_colors_safe(segment, 0)[1] * factor)
+                b = int(self.get_segment_colors_safe(segment, 0)[2] * factor)
                 self.set_pixel_color(pos, (r, g, b))
             else:
                 self.set_pixel_color(pos, (0, 0, 0))  # Noir
@@ -743,7 +758,7 @@ class WS2812FX:
 
         for i in range(segment.length):
             lum = self.sine8((i + segment.counter_mode_step) * sine_incr)
-            color = self.color_blend(segment.colors[0], segment.colors[1], lum)
+            color = self.color_blend(self.get_segment_colors_safe(segment, 0), self.get_segment_colors_safe(segment, 1), lum)
             if segment.reverse:
                 pos = segment.stop - i
             else:
@@ -761,22 +776,22 @@ class WS2812FX:
         # Éteindre les LEDs qui scintillent
         for i in range(segment.start, segment.stop + 1):
             color = self.get_pixel_color(i)
-            if color != segment.colors[1]:
+            if color != self.get_segment_colors_safe(segment, 1):
                 # Fade out
                 r, g, b = color
                 r = max(0, r - 20)
                 g = max(0, g - 20)
                 b = max(0, b - 20)
                 if r == 0 and g == 0 and b == 0:
-                    self.set_pixel_color(i, segment.colors[1])
+                    self.set_pixel_color(i, self.get_segment_colors_safe(segment, 1))
                 else:
                     self.set_pixel_color(i, (r, g, b))
 
         # Allumer quelques LEDs aléatoirement
         if self.random8(3) == 0:
             pos = segment.start + self.random8(segment.length)
-            if self.get_pixel_color(pos) == segment.colors[1]:
-                self.set_pixel_color(pos, segment.colors[0])
+            if self.get_pixel_color(pos) == self.get_segment_colors_safe(segment, 1):
+                self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))
 
         return segment.speed // 32
 
@@ -785,21 +800,21 @@ class WS2812FX:
         # Éteindre les LEDs qui scintillent
         for i in range(segment.start, segment.stop + 1):
             color = self.get_pixel_color(i)
-            if color != segment.colors[1]:
+            if color != self.get_segment_colors_safe(segment, 1):
                 # Fade out
                 r, g, b = color
                 r = max(0, r - 20)
                 g = max(0, g - 20)
                 b = max(0, b - 20)
                 if r == 0 and g == 0 and b == 0:
-                    self.set_pixel_color(i, segment.colors[1])
+                    self.set_pixel_color(i, self.get_segment_colors_safe(segment, 1))
                 else:
                     self.set_pixel_color(i, (r, g, b))
 
         # Allumer quelques LEDs avec des couleurs aléatoires
         if self.random8(3) == 0:
             pos = segment.start + self.random8(segment.length)
-            if self.get_pixel_color(pos) == segment.colors[1]:
+            if self.get_pixel_color(pos) == self.get_segment_colors_safe(segment, 1):
                 color = self.color_wheel(self.random8())
                 self.set_pixel_color(pos, color)
 
@@ -807,7 +822,7 @@ class WS2812FX:
 
     def mode_sparkle(self, segment: WS2812FXSegment) -> int:
         """Étincelle"""
-        self.fill(segment.colors[0], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 0), segment.start, segment.length)
 
         # Ajouter des étincelles blanches aléatoirement
         if self.random8(5) == 0:
@@ -818,7 +833,7 @@ class WS2812FX:
 
     def mode_flash_sparkle(self, segment: WS2812FXSegment) -> int:
         """Étincelle flash"""
-        self.fill(segment.colors[0], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 0), segment.start, segment.length)
 
         # Ajouter des étincelles blanches aléatoirement
         if self.random8(5) == 0:
@@ -829,7 +844,7 @@ class WS2812FX:
 
     def mode_hyper_sparkle(self, segment: WS2812FXSegment) -> int:
         """Hyper étincelle"""
-        self.fill(segment.colors[0], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 0), segment.start, segment.length)
 
         # Ajouter plusieurs étincelles blanches
         for _ in range(8):
@@ -841,9 +856,9 @@ class WS2812FX:
     def mode_strobe(self, segment: WS2812FXSegment) -> int:
         """Stroboscope"""
         if segment.counter_mode_step % 2 == 0:
-            self.fill(segment.colors[0], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 0), segment.start, segment.length)
         else:
-            self.fill(segment.colors[1], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         segment.counter_mode_step += 1
         return 50  # Très rapide
@@ -854,14 +869,14 @@ class WS2812FX:
             color = self.color_wheel((segment.counter_mode_call << 2) & 0xFF)
             self.fill(color, segment.start, segment.length)
         else:
-            self.fill(segment.colors[1], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         segment.counter_mode_step += 1
         return 50  # Très rapide
 
     def mode_larson_scanner(self, segment: WS2812FXSegment) -> int:
         """Scanner Larson (K.I.T.T.)"""
-        self.fill(segment.colors[1], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         # Position du scanner
         if segment.reverse:
@@ -870,13 +885,13 @@ class WS2812FX:
             pos = segment.start + segment.counter_mode_step
 
         if pos >= segment.start and pos <= segment.stop:
-            self.set_pixel_color(pos, segment.colors[0])
+            self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 0))
 
             # Ajouter un effet de traînée
             if pos > segment.start:
                 trail_pos = pos - 1 if not segment.reverse else pos + 1
                 if trail_pos >= segment.start and trail_pos <= segment.stop:
-                    trail_color = self.color_blend(segment.colors[0], segment.colors[1], 128)
+                    trail_color = self.color_blend(self.get_segment_colors_safe(segment, 0), self.get_segment_colors_safe(segment, 1), 128)
                     self.set_pixel_color(trail_pos, trail_color)
 
         segment.counter_mode_step += 1
@@ -888,7 +903,7 @@ class WS2812FX:
 
     def mode_comet(self, segment: WS2812FXSegment) -> int:
         """Comète"""
-        self.fill(segment.colors[1], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         # Position de la comète
         if segment.reverse:
@@ -903,7 +918,7 @@ class WS2812FX:
             comet_pos = pos - i if not segment.reverse else pos + i
             if comet_pos >= segment.start and comet_pos <= segment.stop:
                 intensity = 255 - (i * 255 // comet_size)
-                color = self.color_blend(segment.colors[0], segment.colors[1], intensity)
+                color = self.color_blend(self.get_segment_colors_safe(segment, 0), self.get_segment_colors_safe(segment, 1), intensity)
                 self.set_pixel_color(comet_pos, color)
 
         segment.counter_mode_step += 1
@@ -935,9 +950,9 @@ class WS2812FX:
         for i in range(segment.start, segment.stop + 1):
             # Simuler le vacillement d'une flamme
             flicker = self.random8(55) + 200  # 200-255
-            r = min(255, segment.colors[0][0] * flicker // 255)
-            g = min(255, segment.colors[0][1] * flicker // 255)
-            b = min(255, segment.colors[0][2] * flicker // 255)
+            r = min(255, self.get_segment_colors_safe(segment, 0)[0] * flicker // 255)
+            g = min(255, self.get_segment_colors_safe(segment, 0)[1] * flicker // 255)
+            b = min(255, self.get_segment_colors_safe(segment, 0)[2] * flicker // 255)
             self.set_pixel_color(i, (r, g, b))
 
         return segment.speed // 16
@@ -947,9 +962,9 @@ class WS2812FX:
         for i in range(segment.start, segment.stop + 1):
             # Simuler le vacillement d'une flamme douce
             flicker = self.random8(40) + 215  # 215-255 (plus doux)
-            r = min(255, segment.colors[0][0] * flicker // 255)
-            g = min(255, segment.colors[0][1] * flicker // 255)
-            b = min(255, segment.colors[0][2] * flicker // 255)
+            r = min(255, self.get_segment_colors_safe(segment, 0)[0] * flicker // 255)
+            g = min(255, self.get_segment_colors_safe(segment, 0)[1] * flicker // 255)
+            b = min(255, self.get_segment_colors_safe(segment, 0)[2] * flicker // 255)
             self.set_pixel_color(i, (r, g, b))
 
         return segment.speed // 12  # Plus lent
@@ -959,16 +974,16 @@ class WS2812FX:
         for i in range(segment.start, segment.stop + 1):
             # Simuler le vacillement d'une flamme intense
             flicker = self.random8(80) + 175  # 175-255 (plus intense)
-            r = min(255, segment.colors[0][0] * flicker // 255)
-            g = min(255, segment.colors[0][1] * flicker // 255)
-            b = min(255, segment.colors[0][2] * flicker // 255)
+            r = min(255, self.get_segment_colors_safe(segment, 0)[0] * flicker // 255)
+            g = min(255, self.get_segment_colors_safe(segment, 0)[1] * flicker // 255)
+            b = min(255, self.get_segment_colors_safe(segment, 0)[2] * flicker // 255)
             self.set_pixel_color(i, (r, g, b))
 
         return segment.speed // 20  # Plus rapide
 
     def mode_rainbow_larson(self, segment: WS2812FXSegment) -> int:
         """Scanner Larson arc-en-ciel"""
-        self.fill(segment.colors[1], segment.start, segment.length)
+        self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         # Position du scanner
         if segment.reverse:
@@ -994,10 +1009,10 @@ class WS2812FX:
 
         if segment.counter_mode_step < len(beat_pattern):
             intensity = beat_pattern[segment.counter_mode_step]
-            color = self.color_blend(segment.colors[1], segment.colors[0], intensity)
+            color = self.color_blend(self.get_segment_colors_safe(segment, 1), self.get_segment_colors_safe(segment, 0), intensity)
             self.fill(color, segment.start, segment.length)
         else:
-            self.fill(segment.colors[1], segment.start, segment.length)
+            self.fill(self.get_segment_colors_safe(segment, 1), segment.start, segment.length)
 
         segment.counter_mode_step += 1
         if segment.counter_mode_step >= len(beat_pattern) * 2:
@@ -1025,7 +1040,7 @@ class WS2812FX:
                     pos = segment.stop - i
                 else:
                     pos = segment.start + i
-                self.set_pixel_color(pos, segment.colors[1])
+                self.set_pixel_color(pos, self.get_segment_colors_safe(segment, 1))
 
         return segment.speed // 16
 

@@ -3,38 +3,9 @@
     "segments": [
         {
             "start": 0,
-            "end": 0,
-            "color": "#00d21c",
-            "mode": "CHASE_BLACKOUT",
-            "signal_info": {
-                "message": "ID293UI_chassisControl",
-                "id": 659,
-                "start": 42,
-                "length": 2,
-                "byte_order": "little_endian",
-                "is_signed": false,
-                "scale": 1,
-                "offset": 0,
-                "minimum": 0,
-                "maximum": 3,
-                "unit": null,
-                "choices": {
-                    "0": "PEDAL_SAFETY_OFF",
-                    "1": "PEDAL_SAFETY_ON",
-                    "3": "SNA"
-                },
-                "comment": null,
-                "name": "test",
-                "signal": "UI_pedalSafetyEnable"
-            },
-            "speed": 1,
-            "reverse": false
-        },
-        {
-            "start": 0,
             "end": 4,
             "color": "#ff0000",
-            "mode": "RUNNING_LIGHTS",
+            "mode": "BLINK",
             "signal_info": {
                 "message": "ID239DAS_lanes",
                 "id": 569,
@@ -54,11 +25,48 @@
                     "0": "REJECTED_UNAVAILABLE"
                 },
                 "comment": null,
-                "name": "Segment 2",
+                "name": "Blink",
                 "signal": "DAS_leftLineUsage",
                 "inactive_value": "AVAILABLE"
             },
-            "speed": 88,
+            "speed": 257,
+            "reverse": false
+        },
+        {
+            "start": 7,
+            "end": 13,
+            "color": "#00ed0e",
+            "mode": "SCAN",
+            "signal_info": {
+                "name": "Scan",
+                "active_value": "",
+                "inactive_value": ""
+            },
+            "speed": 1,
+            "reverse": false
+        },
+        {
+            "start": 13,
+            "end": 15,
+            "color": "#ed00e9",
+            "mode": "DUAL_SCAN",
+            "signal_info": {
+                "active_value": "",
+                "inactive_value": "",
+                "name": "Dual Scan"
+            },
+            "speed": 1,
+            "reverse": false
+        },
+        {
+            "start": 5,
+            "end": 6,
+            "color": "#0010ed",
+            "mode": "CHASE_BLACKOUT",
+            "signal_info": {
+                "name": "Chase"
+            },
+            "speed": 1000,
             "reverse": false
         }
     ]
