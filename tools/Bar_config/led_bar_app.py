@@ -4,6 +4,7 @@ from PySide6.QtCore import *
 import json
 import os
 from dbc_manager import DBCManager
+from json_config_manager import JSONConfigManager
 from ws2812fx_python import WS2812FX, WS2812FXMode
 
 class LEDBar(QWidget):
@@ -533,8 +534,7 @@ class SegmentConfigDialog(QDialog):
                     'minimum': signal_data['minimum'],
                     'maximum': signal_data['maximum'],
                     'unit': signal_data['unit'],
-                    'choices': choices_dict,
-                    'comment': signal_data['comment']
+                    'choices': choices_dict
                 }
         return self.color, self.mode_combo.currentText(), signal_info, self.speed_slider.value(), self.reverse_checkbox.isChecked()
 
@@ -542,13 +542,17 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Simulateur de Barre LED")
+        
+        # Initialize JSON config manager
+        self.json_config_manager = JSONConfigManager()
+        
         central = QWidget()
         splitter = QSplitter(Qt.Horizontal)
         
         # Left widget
         left_widget = QWidget()
         left_layout = QVBoxLayout()
-        num_leds, segments = self.load_config()
+        num_leds, segments = self.json_config_manager.load_config()
         if not os.path.exists('segments.json'):
             num_leds, ok = QInputDialog.getInt(self, "Configurer la Barre", "Nombre de LEDs:", 16, 1, 10000)
             if ok:
@@ -727,34 +731,6 @@ class MainWindow(QMainWindow):
         self.update_list()
         self.led_bar.update_colors()
 
-    def load_config(self):
-        if os.path.exists('segments.json'):
-            with open('segments.json', 'r') as f:
-                data = json.load(f)
-            num_leds = data.get('num_leds', 16)
-            segments = []
-            for seg_dict in data.get('segments', []):
-                start = seg_dict['start']
-                end = seg_dict['end']
-                color = QColor(seg_dict['color'])
-                mode = seg_dict['mode']
-                signal_info = seg_dict.get('signal_info', {})
-                speed = seg_dict.get('speed', 1000)  # Valeur par défaut
-                reverse = seg_dict.get('reverse', False)  # Valeur par défaut
-                segments.append((start, end, color, mode, signal_info, speed, reverse))
-            return num_leds, segments
-        return 16, []
-
-    def save_config(self):
-        segments_list = []
-        for seg in self.led_bar.segments:
-            start, end, color, mode, signal_info, speed, reverse = seg
-            seg_dict = {'start': start, 'end': end, 'color': color.name(), 'mode': mode, 'signal_info': signal_info, 'speed': speed, 'reverse': reverse}
-            segments_list.append(seg_dict)
-        data = {'num_leds': self.led_bar.num_leds, 'segments': segments_list}
-        with open('segments.json', 'w') as f:
-            json.dump(data, f, indent=4)
-
     def on_segment_selected(self):
         selected_items = self.segment_list.selectedItems()
         if selected_items:
@@ -864,7 +840,7 @@ class MainWindow(QMainWindow):
             seg = self.led_bar.segments[self.led_bar.selected_segment]
             start, end, color, mode, signal_info, speed, reverse = seg
             
-            # Update segment name
+            # Update segment name - use segment name only, never signal name
             segment_name = signal_info.get('name', '') if signal_info else ''
             if not segment_name:
                 segment_name = f"Segment {self.led_bar.selected_segment + 1}"
@@ -1019,21 +995,14 @@ class MainWindow(QMainWindow):
             signals = self.dbc_manager.get_signals_for_message(message_name)
             self.signal_combo_config.addItems(signals)
         self.signal_combo_config.setEnabled(bool(message_name))
-        
-        # Update signal_info
+
+        # Update signal_info - clear all signal data when message changes
         if self.led_bar.selected_segment is not None:
             seg = self.led_bar.segments[self.led_bar.selected_segment]
             start, end, color, mode, signal_info, speed, reverse = seg
             if message_name:
-                signal_info = signal_info.copy() if signal_info else {}
-                signal_info['message'] = message_name
-                # Clear signal and values when message changes
-                if 'signal' in signal_info:
-                    del signal_info['signal']
-                if 'active_value' in signal_info:
-                    del signal_info['active_value']
-                if 'inactive_value' in signal_info:
-                    del signal_info['inactive_value']
+                # Keep only the message name, clear everything else
+                signal_info = {'message': message_name}
             else:
                 signal_info = {}
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
@@ -1055,12 +1024,55 @@ class MainWindow(QMainWindow):
                     self.inactive_value_combo_config.addItems(values)
                     self.active_value_combo_config.setEnabled(True)
                     self.inactive_value_combo_config.setEnabled(True)
-        
-        # Update signal_info
+
+        # Update signal_info with complete DBC data
         if self.led_bar.selected_segment is not None:
             seg = self.led_bar.segments[self.led_bar.selected_segment]
             start, end, color, mode, signal_info, speed, reverse = seg
-            if signal_name:
+            if signal_name and message_text:
+                # Get complete signal data from DBC
+                signal_data = self.dbc_manager.get_signal_by_name(f"{message_text}.{signal_name}")
+                if signal_data:
+                    # Convert choices to JSON serializable format
+                    choices_dict = {}
+                    if signal_data['choices']:
+                        for key, named_value in signal_data['choices'].items():
+                            # Ensure both key and value are strings
+                            key_str = str(key)
+                            # Handle NamedSignalValue objects properly
+                            if hasattr(named_value, 'name'):
+                                value_str = named_value.name
+                            else:
+                                value_str = str(named_value)
+                            choices_dict[key_str] = value_str
+
+                    # Update signal_info with complete DBC data
+                    signal_info = {
+                        'message': message_text,
+                        'signal': signal_name,
+                        'id': signal_data['message_id'],
+                        'start': signal_data['start'],
+                        'length': signal_data['length'],
+                        'byte_order': signal_data['byte_order'],
+                        'is_signed': signal_data['is_signed'],
+                        'scale': signal_data['scale'],
+                        'offset': signal_data['offset'],
+                        'minimum': signal_data['minimum'],
+                        'maximum': signal_data['maximum'],
+                        'unit': signal_data['unit'],
+                        'choices': choices_dict
+                    }
+                else:
+                    # Fallback if signal not found in DBC
+                    signal_info = signal_info.copy() if signal_info else {}
+                    signal_info['signal'] = signal_name
+                    # Clear values when signal changes
+                    if 'active_value' in signal_info:
+                        del signal_info['active_value']
+                    if 'inactive_value' in signal_info:
+                        del signal_info['inactive_value']
+            elif signal_name:
+                # Signal selected but no message (shouldn't happen in normal flow)
                 signal_info = signal_info.copy() if signal_info else {}
                 signal_info['signal'] = signal_name
                 # Clear values when signal changes
@@ -1068,9 +1080,15 @@ class MainWindow(QMainWindow):
                     del signal_info['active_value']
                 if 'inactive_value' in signal_info:
                     del signal_info['inactive_value']
+            else:
+                # No signal selected
+                signal_info = {}
+
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
             self.led_bar.update_colors()
+            # Sauvegarde automatique après modification du signal
+            self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
 
     def on_active_value_config_changed(self, value):
         if self.led_bar.selected_segment is not None:
@@ -1081,6 +1099,8 @@ class MainWindow(QMainWindow):
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
             self.led_bar.update_colors()
+            # Sauvegarde automatique après modification de la valeur active
+            self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
 
     def on_inactive_value_config_changed(self, value):
         if self.led_bar.selected_segment is not None:
@@ -1091,10 +1111,12 @@ class MainWindow(QMainWindow):
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
             self.led_bar.update_colors()
+            # Sauvegarde automatique après modification de la valeur inactive
+            self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
 
     def on_apply_config(self):
         # Save configuration to file
-        self.save_config()
+        self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
 
     def on_delete_segment(self):
         if self.led_bar.selected_segment is not None:
@@ -1107,7 +1129,7 @@ class MainWindow(QMainWindow):
                 self.led_bar.update_colors()
                 self.update_list()
                 self.update_segment_config()
-                self.save_config()
+                self.json_config_manager.save_config(self.led_bar.segments, self.led_bar.num_leds)
 
 if __name__ == "__main__":
     app = QApplication()

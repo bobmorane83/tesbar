@@ -2,14 +2,20 @@
     "num_leds": 16,
     "segments": [
         {
-            "start": 0,
-            "end": 4,
-            "color": "#ff0000",
-            "mode": "BLINK",
-            "signal_info": {
-                "message": "ID239DAS_lanes",
-                "id": 569,
-                "start": 48,
+            "segment": {
+                "start": 0,
+                "end": 0,
+                "color": "#00ed27",
+                "mode": "BLINK",
+                "speed": 229,
+                "reverse": false,
+                "name": ""
+            },
+            "signal": {
+                "message": "ID389DAS_status2",
+                "signal": "DAS_csaState",
+                "id": 905,
+                "start": 32,
                 "length": 2,
                 "byte_order": "little_endian",
                 "is_signed": false,
@@ -19,55 +25,43 @@
                 "maximum": 3,
                 "unit": null,
                 "choices": {
-                    "1": "AVAILABLE",
-                    "3": "BLACKLISTED",
-                    "2": "FUSED",
-                    "0": "REJECTED_UNAVAILABLE"
+                    "1": "CSA_EXTERNAL_STATE_AVAILABLE",
+                    "2": "CSA_EXTERNAL_STATE_ENABLE",
+                    "3": "CSA_EXTERNAL_STATE_HOLD",
+                    "0": "CSA_EXTERNAL_STATE_UNAVAILABLE"
                 },
-                "comment": null,
-                "name": "Blink",
-                "signal": "DAS_leftLineUsage",
-                "inactive_value": "AVAILABLE"
-            },
-            "speed": 257,
-            "reverse": false
+                "active_value": "CSA_EXTERNAL_STATE_AVAILABLE"
+            }
         },
         {
-            "start": 7,
-            "end": 13,
-            "color": "#00ed0e",
-            "mode": "SCAN",
-            "signal_info": {
-                "name": "Scan",
-                "active_value": "",
-                "inactive_value": ""
+            "segment": {
+                "start": 15,
+                "end": 15,
+                "color": "#00ed36",
+                "mode": "BLINK",
+                "speed": 316,
+                "reverse": false,
+                "name": ""
             },
-            "speed": 1,
-            "reverse": false
-        },
-        {
-            "start": 13,
-            "end": 15,
-            "color": "#ed00e9",
-            "mode": "DUAL_SCAN",
-            "signal_info": {
-                "active_value": "",
-                "inactive_value": "",
-                "name": "Dual Scan"
-            },
-            "speed": 1,
-            "reverse": false
-        },
-        {
-            "start": 5,
-            "end": 6,
-            "color": "#0010ed",
-            "mode": "CHASE_BLACKOUT",
-            "signal_info": {
-                "name": "Chase"
-            },
-            "speed": 1000,
-            "reverse": false
+            "signal": {
+                "message": "ID399DAS_status",
+                "signal": "DAS_forwardCollisionWarning",
+                "id": 921,
+                "start": 22,
+                "length": 2,
+                "byte_order": "little_endian",
+                "is_signed": false,
+                "scale": 1,
+                "offset": 0,
+                "minimum": 0,
+                "maximum": 3,
+                "unit": null,
+                "choices": {
+                    "1": "FORWARD_COLLISION_WARNING",
+                    "0": "NONE",
+                    "3": "SNA"
+                }
+            }
         }
     ]
 }
