@@ -88,6 +88,7 @@ void handleUpload() {
       server.send(500, "text/plain", "Failed to open file for writing");
       return;
     }
+  file.close();
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     File file = LittleFS.open("/segments.json", "a");
     if (file) {
@@ -95,7 +96,9 @@ void handleUpload() {
       file.close();
     }
   } else if (upload.status == UPLOAD_FILE_END) {
-    // Recharger la configuration immédiatement après l'upload
+  // Invalider le cache encodé et recharger la configuration depuis le JSON
+  Serial.println("Upload terminé: invalidation du cache /config.bin et rechargement JSON");
+  LittleFS.remove("/config.bin");
     loadConfiguration();
     // Rediriger vers la page principale
     server.sendHeader("Location", "/");

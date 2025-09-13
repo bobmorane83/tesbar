@@ -305,19 +305,14 @@ void processFrame(can_esp_msg_t frame) {
         }
       }
 
-      // Serial.printf("[CAN] id=0x%X signal=%s value=%s\n",
-      //               frame.id,
-      //               seg.signal.signal_name,
-      //               str_val);
-
       // Update LED segment
       if (seg.segment_index != 0xFF) {
         bool is_active = (strcmp(str_val, seg.signal.active_value) == 0);
-        bool is_inactive = (strcmp(str_val, seg.signal.inactive_value) == 0);
         if (is_active) {
           uint32_t colors[1] = {seg.color_int};
           ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, seg.mode_int, colors, seg.speed, seg.reverse ? REVERSE : NO_OPTIONS);
-        } else if (is_inactive) {
+        } else {
+          // For any non-active value, the segment must be fully off
           uint32_t black[1] = {0};
           ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, 0, black, 0, NO_OPTIONS);
         }
