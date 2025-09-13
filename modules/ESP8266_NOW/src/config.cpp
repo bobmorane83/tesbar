@@ -277,8 +277,9 @@ void reconstructSegmentsFromEncoded() {
 
     // Créer le segment WS2812FX
     seg.segment_index = ws2812fx.getNumSegments();
-    uint32_t black[1] = {0};
-    ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, 0, black, 0, NO_OPTIONS);
+  // Initialize segment with all colors off (explicit 3-color array to avoid white background)
+  uint32_t black[3] = {0, 0, 0};
+  ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, 0, black, 0, NO_OPTIONS);
 
   segments.push_back(seg);
 
@@ -309,11 +310,12 @@ void processFrame(can_esp_msg_t frame) {
       if (seg.segment_index != 0xFF) {
         bool is_active = (strcmp(str_val, seg.signal.active_value) == 0);
         if (is_active) {
-          uint32_t colors[1] = {seg.color_int};
+          // Set primary color and ensure background (color2/color3) are black
+          uint32_t colors[3] = {seg.color_int, 0, 0};
           ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, seg.mode_int, colors, seg.speed, seg.reverse ? REVERSE : NO_OPTIONS);
         } else {
           // For any non-active value, the segment must be fully off
-          uint32_t black[1] = {0};
+          uint32_t black[3] = {0, 0, 0};
           ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, 0, black, 0, NO_OPTIONS);
         }
       }
@@ -479,9 +481,10 @@ void loadConfigurationFromJSON() {
   for (size_t i = 0; i < segments.size(); ++i) {
     segment_desc_t& seg = segments[i];
     if (seg.segment_index == 0xFF) {
-      seg.segment_index = ws2812fx.getNumSegments();
-      uint32_t black[1] = {0};
-      ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, 0, black, 0, NO_OPTIONS);
+  seg.segment_index = ws2812fx.getNumSegments();
+  // Initialize with black background across all colors
+  uint32_t black[3] = {0, 0, 0};
+  ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, 0, black, 0, NO_OPTIONS);
     }
 
     if ((i & 0x3) == 0) yield();
