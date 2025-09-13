@@ -1,21 +1,21 @@
 {
-    "num_leds": 16,
+    "num_leds": 160,
     "segments": [
         {
             "segment": {
                 "start": 0,
-                "end": 0,
-                "color": "#00ed27",
+                "end": 28,
+                "color": "#00ed04",
                 "mode": "BLINK",
-                "speed": 493,
+                "speed": 1000,
                 "reverse": false,
                 "name": ""
             },
             "signal": {
-                "message": "ID389DAS_status2",
-                "signal": "DAS_csaState",
-                "id": 905,
-                "start": 32,
+                "message": "ID3F5VCFRONT_lighting",
+                "signal": "VCFRONT_turnSignalLeftStatus",
+                "id": 1013,
+                "start": 50,
                 "length": 2,
                 "byte_order": "little_endian",
                 "is_signed": false,
@@ -25,43 +25,46 @@
                 "maximum": 3,
                 "unit": null,
                 "choices": {
-                    "1": "CSA_EXTERNAL_STATE_AVAILABLE",
-                    "2": "CSA_EXTERNAL_STATE_ENABLE",
-                    "3": "CSA_EXTERNAL_STATE_HOLD",
-                    "0": "CSA_EXTERNAL_STATE_UNAVAILABLE"
+                    "2": "LIGHT_FAULT",
+                    "0": "LIGHT_OFF",
+                    "1": "LIGHT_ON",
+                    "3": "LIGHT_SNA"
                 },
-                "active_value": "CSA_EXTERNAL_STATE_AVAILABLE",
-                "inactive_value": "CSA_EXTERNAL_STATE_ENABLE"
+                "active_value": "LIGHT_ON",
+                "inactive_value": "LIGHT_OFF"
             }
         },
         {
             "segment": {
-                "start": 1,
-                "end": 15,
-                "color": "#ff0000",
-                "mode": "COLOR_WIPE",
-                "speed": 72,
+                "start": 135,
+                "end": 159,
+                "color": "#00ed0e",
+                "mode": "BLINK",
+                "speed": 1000,
                 "reverse": false,
                 "name": ""
             },
             "signal": {
-                "message": "ID145ESP_status",
-                "signal": "ESP_brakeLamp",
-                "id": 325,
-                "start": 21,
-                "length": 1,
+                "message": "ID3F5VCFRONT_lighting",
+                "signal": "VCFRONT_turnSignalRightStatus",
+                "id": 1013,
+                "start": 52,
+                "length": 2,
                 "byte_order": "little_endian",
                 "is_signed": false,
                 "scale": 1,
                 "offset": 0,
                 "minimum": 0,
-                "maximum": 1,
+                "maximum": 3,
                 "unit": null,
                 "choices": {
-                    "0": "LAMP_OFF",
-                    "1": "LAMP_ON"
+                    "2": "LIGHT_FAULT",
+                    "0": "LIGHT_OFF",
+                    "1": "LIGHT_ON",
+                    "3": "LIGHT_SNA"
                 },
-                "inactive_value": "LAMP_ON"
+                "active_value": "LIGHT_ON",
+                "inactive_value": "LIGHT_OFF"
             }
         }
     ]

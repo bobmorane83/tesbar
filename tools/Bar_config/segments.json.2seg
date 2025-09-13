@@ -1,13 +1,13 @@
 {
-    "num_leds": 160,
+    "num_leds": 16,
     "segments": [
         {
             "segment": {
                 "start": 0,
-                "end": 28,
-                "color": "#00ed04",
+                "end": 0,
+                "color": "#00ed27",
                 "mode": "BLINK",
-                "speed": 1000,
+                "speed": 772,
                 "reverse": false,
                 "name": ""
             },
@@ -36,9 +36,9 @@
         },
         {
             "segment": {
-                "start": 135,
-                "end": 159,
-                "color": "#00ed0e",
+                "start": 15,
+                "end": 15,
+                "color": "#0bed00",
                 "mode": "BLINK",
                 "speed": 1000,
                 "reverse": false,

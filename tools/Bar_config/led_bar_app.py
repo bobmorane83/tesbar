@@ -552,13 +552,21 @@ class MainWindow(QMainWindow):
         # Left widget
         left_widget = QWidget()
         left_layout = QVBoxLayout()
-        num_leds, segments = self.json_config_manager.load_config()
+        
+        # Vérifier si le fichier de configuration existe
         if not os.path.exists('segments.json'):
+            # Si le fichier n'existe pas, demander le nombre de LEDs à l'utilisateur
             num_leds, ok = QInputDialog.getInt(self, "Configurer la Barre", "Nombre de LEDs:", 16, 1, 10000)
             if ok:
                 num_leds = num_leds
             else:
                 num_leds = 16
+            # Créer une configuration par défaut avec le nombre de LEDs saisi
+            self.json_config_manager.save_config(num_leds, [])
+        
+        # Charger la configuration (le fichier existe maintenant)
+        num_leds, segments = self.json_config_manager.load_config()
+        
         self.led_bar = LEDBar(num_leds, self)
         self.led_bar.segments = segments
         left_layout.addWidget(self.led_bar)

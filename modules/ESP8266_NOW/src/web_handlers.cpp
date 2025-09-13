@@ -1,54 +1,81 @@
 #include "web_handlers.h"
 #include <cstring>
+#include <cstdarg>
 
 // --- Web Server Handlers ---
 void handleRoot() {
-  String html = "<html><body>";
-  html += "<h1>Upload JSON Configuration</h1>";
-  html += "<form action='/upload' method='post' enctype='multipart/form-data'>";
-  html += "<input type='file' name='jsonFile' accept='.json'><br><br>";
-  html += "<input type='submit' value='Upload'>";
-  html += "</form>";
-  
-  // Check if segments.json exists and display it
-  if (LittleFS.exists("/segments.json")) {
-    html += "<hr><h2>Fichier existant en flash :</h2>";
-    File file = LittleFS.open("/segments.json", "r");
-    if (file) {
-      html += "<pre>";
-      while (file.available()) {
-        html += (char)file.read();
-      }
-      html += "</pre>";
-      file.close();
-    } else {
-      html += "<p>Erreur lors de la lecture du fichier.</p>";
+  // Buffer HTML optimisé pour économiser RAM
+  const size_t HTML_BUFFER_SIZE = 4096;
+  static char html_buffer[HTML_BUFFER_SIZE];
+  size_t html_pos = 0;
+
+  // Fonction helper pour ajouter du texte au buffer
+  auto addToBuffer = [&](const char* text) {
+    size_t len = strlen(text);
+    if (html_pos + len < HTML_BUFFER_SIZE) {
+      strcpy(&html_buffer[html_pos], text);
+      html_pos += len;
     }
-  }
+  };
+
+  // Fonction helper pour ajouter du texte formaté
+  auto addFormatted = [&](const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    size_t remaining = HTML_BUFFER_SIZE - html_pos;
+    if (remaining > 0) {
+      int written = vsnprintf(&html_buffer[html_pos], remaining, format, args);
+      if (written > 0 && (size_t)written < remaining) {
+        html_pos += written;
+      }
+    }
+    va_end(args);
+  };
+
+  // Début HTML
+  addToBuffer("<html><body>");
+  addToBuffer("<h1>Upload JSON Configuration</h1>");
+  addToBuffer("<form action='/upload' method='post' enctype='multipart/form-data'>");
+  addToBuffer("<input type='file' name='jsonFile' accept='.json'><br><br>");
+  addToBuffer("<input type='submit' value='Upload'>");
+  addToBuffer("</form>");
   
+  // Quick Wi-Fi status
+  addToBuffer("<hr><h2>Wi-Fi</h2>");
+  addFormatted("<p>AP SSID: %s</p>", WiFi.softAPSSID().c_str());
+  addFormatted("<p>Channel: %d | Clients: %d</p>", WiFi.channel(), WiFi.softAPgetStationNum());
+  addFormatted("<p>IP: %s</p>", WiFi.softAPIP().toString().c_str());
+
   // Add simulation buttons
   if (!segments.empty()) {
-    html += "<hr><h2>Simulation des signaux</h2>";
+    addToBuffer("<hr><h2>Simulation des signaux</h2>");
     for (size_t i = 0; i < segments.size(); ++i) {
       auto& seg = segments[i];
-      html += "<h3>Segment " + String(i) + ": " + seg.signal.signal_name + "</h3>";
-      html += "<form action='/simulate' method='get' style='display:inline;'>";
-      html += "<input type='hidden' name='seg' value='" + String(i) + "'>";
-      html += "<input type='hidden' name='state' value='active'>";
-      html += "<button type='submit'>Activer (" + seg.signal.active_value + ")</button>";
-      html += "</form> ";
-      html += "<form action='/simulate' method='get' style='display:inline;'>";
-      html += "<input type='hidden' name='seg' value='" + String(i) + "'>";
-      html += "<input type='hidden' name='state' value='inactive'>";
-      html += "<button type='submit'>Désactiver (" + seg.signal.inactive_value + ")</button>";
-      html += "</form><br><br>";
+      addFormatted("<h3>Segment %d: %s</h3>", (int)i, seg.signal.signal_name);
+      addFormatted("<form action='/simulate' method='get' style='display:inline;'>");
+      addFormatted("<input type='hidden' name='seg' value='%d'>", (int)i);
+      addToBuffer("<input type='hidden' name='state' value='active'>");
+      addFormatted("<button type='submit'>Activer (%s)</button>", seg.signal.active_value);
+      addToBuffer("</form> ");
+      addFormatted("<form action='/simulate' method='get' style='display:inline;'>");
+      addFormatted("<input type='hidden' name='seg' value='%d'>", (int)i);
+      addToBuffer("<input type='hidden' name='state' value='inactive'>");
+      addFormatted("<button type='submit'>Désactiver (%s)</button>", seg.signal.inactive_value);
+      addToBuffer("</form><br><br>");
     }
   } else {
-    html += "<hr><p>Aucun segment chargé. Uploadez le fichier segments.json via le formulaire ci-dessus.</p>";
+    addToBuffer("<hr><p>Aucun segment chargé. Uploadez le fichier segments.json via le formulaire ci-dessus.</p>");
   }
   
-  html += "</body></html>";
-  server.send(200, "text/html", html);
+  // Check if segments.json exists and display encoded configuration
+  if (LittleFS.exists("/segments.json")) {
+    displayEncodedConfiguration(html_buffer, HTML_BUFFER_SIZE, html_pos);
+  }
+  
+  addToBuffer("</body></html>");
+  html_buffer[html_pos] = '\0'; // Terminer la chaîne
+  
+  server.send(200, "text/html", html_buffer);
 }
 
 void handleUpload() {
@@ -68,7 +95,11 @@ void handleUpload() {
       file.close();
     }
   } else if (upload.status == UPLOAD_FILE_END) {
-    server.send(200, "text/plain", "File uploaded successfully!");
+    // Recharger la configuration immédiatement après l'upload
+    loadConfiguration();
+    // Rediriger vers la page principale
+    server.sendHeader("Location", "/");
+    server.send(302);
   }
 }
 
@@ -79,12 +110,9 @@ void handleSimulate() {
     String state = server.arg("state");
     if (segIndex >= 0 && segIndex < (int)segments.size()) {
       auto& seg = segments[segIndex];
-      String target_value;
-      if (state == "active") {
-        target_value = seg.signal.active_value;
-      } else if (state == "inactive") {
-        target_value = seg.signal.inactive_value;
-      } else {
+      
+      // Vérifier l'état demandé
+      if (state != "active" && state != "inactive") {
         server.send(400, "text/plain", "Invalid state");
         return;
       }
@@ -92,9 +120,10 @@ void handleSimulate() {
       // Find the raw value for target_value
       uint32_t raw = 0;
       bool found = false;
-      for (auto& pair : seg.signal.choices) {
-        if (pair.second == target_value) {
-          raw = pair.first;
+      const char* target_str = (state == "active") ? seg.signal.active_value : seg.signal.inactive_value;
+      for (uint8_t j = 0; j < seg.signal.choices_count; j++) {
+        if (strcmp(seg.signal.choices[j].value, target_str) == 0) {
+          raw = seg.signal.choices[j].key;
           found = true;
           break;
         }

@@ -15,15 +15,16 @@ extern "C" {
 
 // --- LED Configuration ---
 #define LED_PIN D2  // WS2812B data pin
-#define NUM_LEDS 16 // Maximum number of LEDs
+#define DEFAULT_NUM_LEDS 16 // Default number of LEDs
+#define MAX_NUM_LEDS 160 // Maximum safe number of LEDs
 
-WS2812FX ws2812fx = WS2812FX(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+WS2812FX ws2812fx = WS2812FX(MAX_NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // --- CAN frame message format ---
 // Moved to config.h
 
 // --- Ring buffer ---
-#define RX_QUEUE_SIZE 16
+#define RX_QUEUE_SIZE 8
 typedef struct {
   uint8_t mac[6];
   can_esp_msg_t frame;
@@ -54,6 +55,10 @@ rx_item_t rx_queue[RX_QUEUE_SIZE];
 ESP8266WebServer server(80);
 const char* ssid = "ESP8266_JSON_Uploader";
 const char* password = "password123";
+const int WIFI_CHANNEL = 1; // Fix channel for AP + ESP-NOW stability
+
+// WiFi event handlers for debugging
+WiFiEventHandler onStaConn, onStaDisc;
 
 // --- Callback de réception ESP-NOW ---
 IRAM_ATTR void onDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
@@ -85,22 +90,34 @@ void setup() {
     return;
   }
 
-  // Load configuration from segments.json
+  // Initialize WS2812FX once at startup (pre-allocated for 160 LEDs)
+  Serial.println("Initializing WS2812FX with 160 LEDs...");
+  ws2812fx.init();
+  ws2812fx.setBrightness(50); // Moderate brightness
+  ws2812fx.start();
+  Serial.println("WS2812FX initialized successfully");
+
+  // Load configuration from segments.json (will only reconfigure segments)
   loadConfiguration();
 
-  // Initialize LED strip
-  ws2812fx.init();
-  ws2812fx.setBrightness(255);
-  ws2812fx.start();
-  
   // Segments are already created in loadConfiguration()
 
-  // Setup WiFi Access Point
+  // Setup WiFi Access Point (fixed channel for stability with ESP-NOW)
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid, password);
-  Serial.println("WiFi AP started");
-  Serial.print("IP Address: ");
+  bool ap_ok = WiFi.softAP(ssid, password, WIFI_CHANNEL, false);
+  Serial.printf("WiFi AP %s on channel %d\n", ap_ok ? "started" : "failed", WiFi.channel());
+  Serial.print("AP IP Address: ");
   Serial.println(WiFi.softAPIP());
+
+  // WiFi event logging
+  onStaConn = WiFi.onSoftAPModeStationConnected([](const WiFiEventSoftAPModeStationConnected& evt){
+    Serial.printf("[WiFi] STA connected: %02X:%02X:%02X:%02X:%02X:%02X, AID=%d\n",
+      evt.mac[0], evt.mac[1], evt.mac[2], evt.mac[3], evt.mac[4], evt.mac[5], evt.aid);
+  });
+  onStaDisc = WiFi.onSoftAPModeStationDisconnected([](const WiFiEventSoftAPModeStationDisconnected& evt){
+    Serial.printf("[WiFi] STA disconnected: %02X:%02X:%02X:%02X:%02X:%02X, AID=%d\n",
+      evt.mac[0], evt.mac[1], evt.mac[2], evt.mac[3], evt.mac[4], evt.mac[5], evt.aid);
+  });
 
   // Setup Web Server
   server.on("/", handleRoot);
@@ -109,10 +126,7 @@ void setup() {
   server.begin();
   Serial.println("Web server started");
 
-  // ESP-NOW setup
-  WiFi.disconnect();
-  delay(100);
-
+  // ESP-NOW setup (AP mode already set with fixed channel)
   if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");
     return;
@@ -144,6 +158,16 @@ void loop() {
   
   // Update LED animations
   ws2812fx.service();
+  yield();
+
+  // Periodic diagnostics
+  static unsigned long lastDiag = 0;
+  unsigned long now = millis();
+  if (now - lastDiag > 5000) {
+    lastDiag = now;
+    Serial.printf("[Diag] Uptime=%lus, FreeHeap=%u, AP Clients=%d, Chan=%d\n",
+      now/1000, ESP.getFreeHeap(), WiFi.softAPgetStationNum(), WiFi.channel());
+  }
 
   delay(2);
 }

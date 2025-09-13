@@ -1,21 +1,21 @@
 {
-    "num_leds": 16,
+    "num_leds": 160,
     "segments": [
         {
             "segment": {
                 "start": 0,
-                "end": 0,
-                "color": "#00ed27",
+                "end": 28,
+                "color": "#00ed04",
                 "mode": "BLINK",
-                "speed": 229,
+                "speed": 1000,
                 "reverse": false,
                 "name": ""
             },
             "signal": {
-                "message": "ID389DAS_status2",
-                "signal": "DAS_csaState",
-                "id": 905,
-                "start": 32,
+                "message": "ID3F5VCFRONT_lighting",
+                "signal": "VCFRONT_turnSignalLeftStatus",
+                "id": 1013,
+                "start": 50,
                 "length": 2,
                 "byte_order": "little_endian",
                 "is_signed": false,
@@ -25,30 +25,30 @@
                 "maximum": 3,
                 "unit": null,
                 "choices": {
-                    "1": "CSA_EXTERNAL_STATE_AVAILABLE",
-                    "2": "CSA_EXTERNAL_STATE_ENABLE",
-                    "3": "CSA_EXTERNAL_STATE_HOLD",
-                    "0": "CSA_EXTERNAL_STATE_UNAVAILABLE"
+                    "2": "LIGHT_FAULT",
+                    "0": "LIGHT_OFF",
+                    "1": "LIGHT_ON",
+                    "3": "LIGHT_SNA"
                 },
-                "active_value": "CSA_EXTERNAL_STATE_AVAILABLE",
-                "inactive_value": "CSA_EXTERNAL_STATE_ENABLE"
+                "active_value": "LIGHT_ON",
+                "inactive_value": "LIGHT_OFF"
             }
         },
         {
             "segment": {
-                "start": 15,
-                "end": 15,
-                "color": "#00ed36",
+                "start": 135,
+                "end": 159,
+                "color": "#00ed0e",
                 "mode": "BLINK",
-                "speed": 316,
+                "speed": 1000,
                 "reverse": false,
                 "name": ""
             },
             "signal": {
-                "message": "ID399DAS_status",
-                "signal": "DAS_forwardCollisionWarning",
-                "id": 921,
-                "start": 22,
+                "message": "ID3F5VCFRONT_lighting",
+                "signal": "VCFRONT_turnSignalRightStatus",
+                "id": 1013,
+                "start": 52,
                 "length": 2,
                 "byte_order": "little_endian",
                 "is_signed": false,
@@ -58,12 +58,13 @@
                 "maximum": 3,
                 "unit": null,
                 "choices": {
-                    "1": "FORWARD_COLLISION_WARNING",
-                    "0": "NONE",
-                    "3": "SNA"
+                    "2": "LIGHT_FAULT",
+                    "0": "LIGHT_OFF",
+                    "1": "LIGHT_ON",
+                    "3": "LIGHT_SNA"
                 },
-                "inactive_value": "SNA",
-                "active_value": "FORWARD_COLLISION_WARNING"
+                "active_value": "LIGHT_ON",
+                "inactive_value": "LIGHT_OFF"
             }
         }
     ]
