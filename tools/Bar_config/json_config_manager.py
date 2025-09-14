@@ -56,7 +56,13 @@ class JSONConfigManager:
         Args:
             config_file (str): Chemin vers le fichier de configuration
         """
-        self.config_file = config_file
+        # Utiliser un chemin absolu basé sur l'emplacement de ce fichier pour éviter
+        # les problèmes de répertoire de travail courant lorsqu'on exécute l'application
+        if not config_file or os.path.basename(config_file) == config_file:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.config_file = os.path.join(base_dir, 'segments.json')
+        else:
+            self.config_file = config_file
 
     def validate_config_file(self):
         """Valide l'intégrité du fichier de configuration
@@ -172,6 +178,17 @@ class JSONConfigManager:
                         mode = segment.get('mode', 'static')
                         speed = segment.get('speed', 1000)
                         reverse = segment.get('reverse', False)
+                        # Prend en charge 'inverse' comme alias francophone
+                        if 'inverse' in segment:
+                            reverse = segment.get('inverse', reverse)
+                        # Normalisation du type pour 'reverse'
+                        try:
+                            if isinstance(reverse, str):
+                                reverse = reverse.strip().lower() in ('true', '1', 'yes', 'on')
+                            else:
+                                reverse = bool(reverse)
+                        except Exception:
+                            reverse = False
                         name = segment.get('name', '')  # Charger le nom depuis l'objet segment
 
                         # Validation des valeurs
@@ -264,6 +281,15 @@ class JSONConfigManager:
                     if 'name' in signal_info_clean:
                         del signal_info_clean['name']
 
+                    # Normalisation du type pour 'reverse' avant sauvegarde
+                    try:
+                        if isinstance(reverse, str):
+                            reverse = reverse.strip().lower() in ('true', '1', 'yes', 'on')
+                        else:
+                            reverse = bool(reverse)
+                    except Exception:
+                        reverse = False
+
                     seg_dict = {
                         'segment': {
                             'start': start,
@@ -297,6 +323,9 @@ class JSONConfigManager:
             # Sauvegarde du nouveau fichier
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+                # Force write to disk so external editors immediately see the change
+                f.flush()
+                os.fsync(f.fileno())
 
             print(f"Configuration sauvegardée: {len(segments_list)} segments")
             return True

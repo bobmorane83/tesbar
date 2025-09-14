@@ -6,9 +6,9 @@
                 "start": 0,
                 "end": 28,
                 "color": "#00ed04",
-                "mode": "BLINK",
-                "speed": 1000,
-                "reverse": false,
+                "mode": "RUNNING_LIGHTS",
+                "speed": 52,
+                "reverse": true,
                 "name": ""
             },
             "signal": {
@@ -39,8 +39,8 @@
                 "start": 135,
                 "end": 159,
                 "color": "#00ed0e",
-                "mode": "BLINK",
-                "speed": 1000,
+                "mode": "RUNNING_LIGHTS",
+                "speed": 51,
                 "reverse": false,
                 "name": ""
             },

@@ -24,7 +24,23 @@ class LEDBar(QWidget):
         self.ws2812fx = WS2812FX(num_leds)
         self.effect_timer = QTimer()
         self.effect_timer.timeout.connect(self.update_effects)
-        self.effect_timer.start(50)  # ~20 FPS
+        self.adjust_timer_frequency()  # Ajuster la fréquence selon les effets
+
+    def adjust_timer_frequency(self):
+        """Ajuste la fréquence du timer selon les vitesses des segments actifs"""
+        if not self.segments:
+            # Pas de segments, fréquence par défaut
+            self.effect_timer.start(50)  # ~20 FPS
+            return
+        
+        # Trouver la vitesse minimale parmi tous les segments
+        min_speed = min(seg[5] for seg in self.segments)  # seg[5] = speed
+        
+        # Calculer l'intervalle de mise à jour (au maximum 50ms pour la fluidité)
+        # Pour les effets lents, on peut réduire la fréquence
+        update_interval = max(10, min(50, min_speed // 20))  # Au moins 10ms, au plus 50ms
+        
+        self.effect_timer.start(update_interval)
 
     def update_effects(self):
         """Update WS2812FX effects on main bar"""
@@ -131,6 +147,9 @@ class LEDBar(QWidget):
             # Reset to gray if no segments
             self.led_colors = [QColor('gray')] * self.num_leds
         
+        # Ajuster la fréquence du timer selon les nouveaux segments
+        self.adjust_timer_frequency()
+        
         self.update()
         self.parent_window.update_list()
 
@@ -223,6 +242,9 @@ class MiniLEDPreview(QWidget):
             segment.counter_mode_step = 0
             segment.last_update_time = 0  # Reset timing
             self.update()  # Force visual update
+            # Redémarrer l'animation si elle était arrêtée
+            if not self.timer.isActive():
+                self.start_preview()
 
     def set_reverse(self, reverse: bool):
         """Modifie le sens de l'effet"""
@@ -234,11 +256,17 @@ class MiniLEDPreview(QWidget):
             segment.counter_mode_step = 0
             segment.last_update_time = 0  # Reset timing
             self.update()  # Force visual update
+            # Redémarrer l'animation si elle était arrêtée
+            if not self.timer.isActive():
+                self.start_preview()
 
     def set_color(self, color: QColor):
         """Modifie la couleur de l'effet"""
         if self.ws2812fx.segments:
             self.ws2812fx.segments[0].colors = [(color.red(), color.green(), color.blue())]
+            # Redémarrer l'animation si elle était arrêtée
+            if not self.timer.isActive():
+                self.start_preview()
 
     def start_preview(self):
         """Démarre la prévisualisation"""
@@ -440,6 +468,8 @@ class SegmentConfigDialog(QDialog):
         self.on_mode_changed(mode)
 
     def on_mode_changed(self, mode):
+        # Effacer la mini barre avant d'afficher le nouvel effet
+        self.mini_preview.stop_preview()
         # Update mini preview with selected mode
         self.mini_preview.set_mode_from_string(mode, self.color, self.speed_slider.value(), self.reverse_checkbox.isChecked())
 
@@ -553,8 +583,9 @@ class MainWindow(QMainWindow):
         left_widget = QWidget()
         left_layout = QVBoxLayout()
         
-        # Vérifier si le fichier de configuration existe
-        if not os.path.exists('segments.json'):
+        # Vérifier si le fichier de configuration existe (utilise le même chemin absolu que JSONConfigManager)
+        config_path = self.json_config_manager.config_file
+        if not os.path.exists(config_path):
             # Si le fichier n'existe pas, demander le nombre de LEDs à l'utilisateur
             num_leds, ok = QInputDialog.getInt(self, "Configurer la Barre", "Nombre de LEDs:", 16, 1, 10000)
             if ok:
@@ -637,7 +668,7 @@ class MainWindow(QMainWindow):
         self.mode_combo_config.setEnabled(False)
         mode_layout.addWidget(self.mode_combo_config)
         right_layout.addLayout(mode_layout)
-        
+
         # Speed control
         speed_layout = QHBoxLayout()
         speed_layout.addWidget(QLabel("Vitesse:"))
@@ -652,13 +683,13 @@ class MainWindow(QMainWindow):
         self.speed_label_config.setFixedWidth(50)
         speed_layout.addWidget(self.speed_label_config)
         right_layout.addLayout(speed_layout)
-        
+
         # Reverse checkbox
         self.reverse_checkbox_config = QCheckBox("Inverser")
-        self.reverse_checkbox_config.stateChanged.connect(self.on_reverse_config_changed)
+        self.reverse_checkbox_config.toggled.connect(self.on_reverse_config_changed)
         self.reverse_checkbox_config.setEnabled(False)
         right_layout.addWidget(self.reverse_checkbox_config)
-        
+
         # Add spacing before CAN section
         right_layout.addSpacing(10)
         
@@ -705,10 +736,6 @@ class MainWindow(QMainWindow):
         can_group.setLayout(can_layout)
         right_layout.addWidget(can_group)
         buttons_layout = QHBoxLayout()
-        self.apply_btn = QPushButton("Appliquer")
-        self.apply_btn.clicked.connect(self.on_apply_config)
-        self.apply_btn.setEnabled(False)
-        buttons_layout.addWidget(self.apply_btn)
         
         self.delete_btn = QPushButton("Supprimer")
         self.delete_btn.clicked.connect(self.on_delete_segment)
@@ -913,7 +940,6 @@ class MainWindow(QMainWindow):
                 self.inactive_value_combo_config.setEnabled(False)
             
             # Enable buttons
-            self.apply_btn.setEnabled(True)
             self.delete_btn.setEnabled(True)
         else:
             # No segment selected
@@ -928,7 +954,6 @@ class MainWindow(QMainWindow):
             self.signal_combo_config.setEnabled(False)
             self.active_value_combo_config.setEnabled(False)
             self.inactive_value_combo_config.setEnabled(False)
-            self.apply_btn.setEnabled(False)
             self.delete_btn.setEnabled(False)
             
             # Stop preview when no segment selected
@@ -944,6 +969,8 @@ class MainWindow(QMainWindow):
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.update_list()
             self.led_bar.update_colors()
+            # Sauvegarde automatique après modification du nom
+            self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_color_changed(self):
         if self.led_bar.selected_segment is not None:
@@ -960,6 +987,8 @@ class MainWindow(QMainWindow):
                 self.update_list()
                 # Update preview color
                 self.mini_preview_config.set_color(color)
+                # Sauvegarde automatique
+                self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_mode_config_changed(self, mode):
         if self.led_bar.selected_segment is not None:
@@ -967,8 +996,12 @@ class MainWindow(QMainWindow):
             start, end, color, _, signal_info, speed, reverse = seg
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.led_bar.update_colors()
+            # Effacer la mini barre avant d'afficher le nouvel effet
+            self.mini_preview_config.stop_preview()
             # Update preview
             self.mini_preview_config.set_mode_from_string(mode, color, speed, reverse)
+            # Sauvegarde automatique
+            self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_speed_config_changed(self, speed):
         self.speed_label_config.setText(str(speed))
@@ -980,18 +1013,26 @@ class MainWindow(QMainWindow):
             start, end, color, mode, signal_info, _, reverse = seg
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.led_bar.update_colors()
+            # Effacer la mini barre avant de mettre à jour la vitesse
+            self.mini_preview_config.stop_preview()
             # Update preview speed
             self.mini_preview_config.set_speed(speed)
+            # Sauvegarde automatique
+            self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
-    def on_reverse_config_changed(self, state):
+    def on_reverse_config_changed(self, checked):
         if self.led_bar.selected_segment is not None:
-            reverse = state == Qt.Checked
+            reverse = bool(checked)
             seg = self.led_bar.segments[self.led_bar.selected_segment]
             start, end, color, mode, signal_info, speed, _ = seg
             self.led_bar.segments[self.led_bar.selected_segment] = (start, end, color, mode, signal_info, speed, reverse)
             self.led_bar.update_colors()
+            # Effacer la mini barre avant de mettre à jour le sens
+            self.mini_preview_config.stop_preview()
             # Update preview reverse
             self.mini_preview_config.set_reverse(reverse)
+            # Sauvegarde automatique
+            self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_message_config_changed(self, message_name):
         self.signal_combo_config.clear()
@@ -1068,7 +1109,9 @@ class MainWindow(QMainWindow):
                         'minimum': signal_data['minimum'],
                         'maximum': signal_data['maximum'],
                         'unit': signal_data['unit'],
-                        'choices': choices_dict
+                        'choices': choices_dict,
+                        'active_value': 'LIGHT_ON',  # Valeur par défaut pour l'état actif
+                        'inactive_value': 'LIGHT_OFF'  # Valeur par défaut pour l'état inactif
                     }
                 else:
                     # Fallback if signal not found in DBC
@@ -1121,10 +1164,6 @@ class MainWindow(QMainWindow):
             self.led_bar.update_colors()
             # Sauvegarde automatique après modification de la valeur inactive
             self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
-
-    def on_apply_config(self):
-        # Save configuration to file
-        self.json_config_manager.save_config(self.led_bar.num_leds, self.led_bar.segments)
 
     def on_delete_segment(self):
         if self.led_bar.selected_segment is not None:

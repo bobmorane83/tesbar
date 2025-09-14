@@ -69,7 +69,20 @@ void handleRoot() {
   
   // Check if segments.json exists and display encoded configuration
   if (LittleFS.exists("/segments.json")) {
+    // Limiter la taille du dump pour ne pas dépasser le buffer
+    size_t before = html_pos;
     displayEncodedConfiguration(html_buffer, HTML_BUFFER_SIZE, html_pos);
+    if (html_pos >= HTML_BUFFER_SIZE - 128) {
+      // Si on approche la limite, tronquer et avertir
+      const char* warn = "<p><b>Affichage tronqué (trop de segments)</b></p>";
+      size_t warn_len = strlen(warn);
+      if (html_pos + warn_len < HTML_BUFFER_SIZE) {
+        strcpy(&html_buffer[html_pos], warn);
+        html_pos += warn_len;
+      }
+      // Terminer la chaîne proprement
+      html_buffer[HTML_BUFFER_SIZE-1] = '\0';
+    }
   }
   
   addToBuffer("</body></html>");
