@@ -70,7 +70,6 @@ void handleRoot() {
   // Check if segments.json exists and display encoded configuration
   if (LittleFS.exists("/segments.json")) {
     // Limiter la taille du dump pour ne pas dépasser le buffer
-    size_t before = html_pos;
     displayEncodedConfiguration(html_buffer, HTML_BUFFER_SIZE, html_pos);
     if (html_pos >= HTML_BUFFER_SIZE - 128) {
       // Si on approche la limite, tronquer et avertir
@@ -133,52 +132,17 @@ void handleSimulate() {
         return;
       }
 
-      // Find the raw value for target_value
-      uint32_t raw = 0;
-      bool found = false;
-      const char* target_str = (state == "active") ? seg.signal.active_value : seg.signal.inactive_value;
-      for (uint8_t j = 0; j < seg.signal.choices_count; j++) {
-        if (strcmp(seg.signal.choices[j].value, target_str) == 0) {
-          raw = seg.signal.choices[j].key;
-          found = true;
-          break;
+      // Apply state directly to the targeted segment only (independent control)
+      bool make_active = (state == "active");
+      if (seg.segment_index != 0xFF) {
+        if (make_active) {
+          uint32_t colors[3] = {seg.color_int, 0, 0};
+          ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, seg.mode_int, colors, seg.speed, seg.reverse ? REVERSE : NO_OPTIONS);
+        } else {
+          uint32_t black[3] = {0, 0, 0};
+          ws2812fx.setSegment(seg.segment_index, seg.start, seg.end, 0, black, 0, NO_OPTIONS);
         }
       }
-      if (!found) {
-        server.send(400, "text/plain", "Value not found in choices");
-        return;
-      }
-
-      // Create fake frame
-      can_esp_msg_t fake_frame;
-      fake_frame.id = seg.signal.id;
-      fake_frame.extended = 0;
-      fake_frame.dlc = 8;
-      memset(fake_frame.data, 0, 8);
-
-      // Set the bits
-      if (seg.signal.little_endian) {
-        for (uint8_t i = 0; i < seg.signal.length; ++i) {
-          uint8_t bit_index = seg.signal.start_bit + i;
-          uint8_t byte = bit_index / 8;
-          uint8_t bit = bit_index % 8;
-          if (raw & (1 << i)) {
-            fake_frame.data[byte] |= (1 << bit);
-          }
-        }
-      } else {
-        for (uint8_t i = 0; i < seg.signal.length; ++i) {
-          uint8_t bit_index = seg.signal.start_bit + i;
-          uint8_t byte = 7 - (bit_index / 8);
-          uint8_t bit = 7 - (bit_index % 8);
-          if (raw & (1 << (seg.signal.length - 1 - i))) {
-            fake_frame.data[byte] |= (1 << bit);
-          }
-        }
-      }
-
-      // Process the fake frame
-      processFrame(fake_frame);
       server.sendHeader("Location", "/");
       server.send(302);
     } else {
